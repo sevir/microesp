@@ -8,8 +8,9 @@ title = "MicroESP gitleaks config"
 useDefault = true
 
 [allowlist]
-description = "Vectores de prueba públicos del protocolo cdc-v1 y plantillas con valores de relleno"
+description = "Vectores de prueba públicos del protocolo cdc-v1, plantillas con valores de relleno y claves ficticias de tests del firmware"
 paths = [
   '''^protocol/testdata/vectors\.json$''',
   '''(^|/)tuya_secrets\.h\.example$''',
+  '''^firmware/test/host/test_security\.c$''',
 ]

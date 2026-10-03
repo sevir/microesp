@@ -79,7 +79,7 @@ jobs:
           grep -q 'espressif/esp-sr: "==2.4.7"' firmware/esp_components/mesp_hal/idf_component.yml
           # Un lock resuelto con otra versión (caché antigua) se descarta.
           lock="$OPEN_SDK_ROOT/platform/ESP32/tuya_open_sdk/dependencies.lock"
-          if [ -f "$lock" ] && ! grep -A12 'espressif/esp-sr:' "$lock" | grep -q 'version: 2.4.7'; then
+          if [ -f "$lock" ] && [ "$(awk '/^  espressif\/esp-sr:/{f=1;next} f&&/^  [^ ]/{f=0} f&&/^    version:/{gsub(/["\x27]/,"",$2);print $2}' "$lock")" != "2.4.7" ]; then
             echo "dependencies.lock con otra esp-sr: se borra"; rm -f "$lock"
           fi
 
@@ -98,7 +98,7 @@ jobs:
           ls -l "$d"
           test -f "$d/microesp_QIO_${ver}.bin"
           lock="$OPEN_SDK_ROOT/platform/ESP32/tuya_open_sdk/dependencies.lock"
-          if grep -A12 'espressif/esp-sr:' "$lock" | grep -q 'version: 2.4.7'; then echo "esp-sr 2.4.7 OK"; else echo "::warning::esp-sr no resuelto a 2.4.7"; fi
+          if [ "$(awk '/^  espressif\/esp-sr:/{f=1;next} f&&/^  [^ ]/{f=0} f&&/^    version:/{gsub(/["\x27]/,"",$2);print $2}' "$lock")" = "2.4.7" ]; then echo "esp-sr 2.4.7 OK"; else echo "::warning::esp-sr no resuelto a 2.4.7"; fi
           (cd "$d" && sha256sum ./*.bin > SHA256SUMS && cat SHA256SUMS)
 
       - name: Subir binarios
