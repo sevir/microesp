@@ -1,0 +1,93 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  agent:
+    name: agent (Go)
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then echo "::error::gofmt pendiente en:"; echo "$unformatted"; exit 1; fi
+      - name: go vet (linux)
+        run: go vet ./...
+      - name: go vet (windows)
+        run: GOOS=windows go vet ./...
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
+      - name: go test -race (lee ../protocol/testdata/vectors.json)
+        run: |
+          go test -race -coverpkg=./internal/... -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out | tail -1
+      - uses: actions/upload-artifact@v4
+        with:
+          name: agent-coverage
+          path: agent/coverage.out
+          retention-days: 14
+      - name: Compilación cruzada (linux amd64/arm64, windows amd64)
+        run: make cross VERSION="ci-${GITHUB_SHA::7}"
+
+  firmware-host-tests:
+    name: firmware host tests
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      # Solo gcc/make del runner + Unity, mbedTLS y cJSON a los commits de ESP-IDF v5.4 /
+      # TuyaOpen b80932d. No hace falta la toolchain de ESP.
+      - uses: actions/cache@v4
+        with:
+          path: .ci-deps
+          key: host-test-deps-${{ hashFiles('scripts/ci/fetch-host-test-deps.sh') }}
+      - name: Dependencias de los tests
+        run: scripts/ci/fetch-host-test-deps.sh .ci-deps
+      - name: Tests Unity (ASan/UBSan)
+        run: TOS="$PWD/.ci-deps/TuyaOpen" IDF="$PWD/.ci-deps/esp-idf" firmware/build.sh test
+
+  firmware-build:
+    uses: ./.github/workflows/firmware-build.yml
+
+  secrets:
+    name: secrets (gitleaks)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Usa .gitleaks.toml de la raíz. En cuentas de organización la acción exige
+      # el secreto GITLEAKS_LICENSE (gratuito); en cuentas personales no.
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+
+  shell:
+    name: shellcheck
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck *.sh
+        run: |
+          shellcheck --version
+          find . -name '*.sh' -not -path './.git/*' -not -path './.ci-deps/*' -print0 \
+            | xargs -0 --no-run-if-empty shellcheck

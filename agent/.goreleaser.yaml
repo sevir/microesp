@@ -1,0 +1,52 @@
+# goreleaser v2 — binarios para Linux amd64/arm64 y Windows amd64.
+version: 2
+project_name: microesp-agent
+
+before:
+  hooks:
+    - go mod tidy
+    - go test ./...
+
+builds:
+  - id: microesp-agent
+    main: ./cmd/microesp-agent
+    binary: microesp-agent
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    goos: [linux, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - src: deploy/**/*
+        dst: deploy
+
+checksum:
+  # Un único SHA256SUMS para el agente y el firmware (release.yml deja los .bin del
+  # firmware en agent/.release-firmware antes de ejecutar goreleaser).
+  name_template: SHA256SUMS
+  algorithm: sha256
+  extra_files:
+    - glob: ./.release-firmware/*.bin
+
+release:
+  extra_files:
+    - glob: ./.release-firmware/*.bin
+
+changelog:
+  use: git
+  sort: asc

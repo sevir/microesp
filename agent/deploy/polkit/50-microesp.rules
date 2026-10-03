@@ -1,0 +1,17 @@
+// /etc/polkit-1/rules.d/50-microesp.rules
+// Permite al usuario de servicio "microesp" SOLO apagar y reiniciar el
+// equipo a través de logind (también con otras sesiones abiertas).
+// No concede ignorar inhibidores, suspender, hibernar ni nada más.
+polkit.addRule(function(action, subject) {
+    if (subject.user !== "microesp") {
+        return polkit.Result.NOT_HANDLED;
+    }
+    switch (action.id) {
+    case "org.freedesktop.login1.power-off":
+    case "org.freedesktop.login1.power-off-multiple-sessions":
+    case "org.freedesktop.login1.reboot":
+    case "org.freedesktop.login1.reboot-multiple-sessions":
+        return polkit.Result.YES;
+    }
+    return polkit.Result.NOT_HANDLED;
+});

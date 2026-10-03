@@ -1,0 +1,149 @@
+{
+  "pairing": {
+    "code": "482913",
+    "agent_nonce": "a1b2c3d4e5f60718",
+    "dongle_nonce": "0f1e2d3c4b5a6978",
+    "key_hex": "1a04cfbd6d99e3b3bfe48a078b42529690c08951f6d23ec1efe6d06440f2fb03",
+    "pair_confirm_sig": "7eed7edf9475181fc251700d790bcd3ce8e530bf48eb1b4b53f58871fbbd2fd4",
+    "pair_ok_sig": "3a529a79978e442848eb6f3ee60dab31b51f246aa9aac1a791fd95635fff4573"
+  },
+  "session": {
+    "key_hex": "1a04cfbd6d99e3b3bfe48a078b42529690c08951f6d23ec1efe6d06440f2fb03",
+    "agent_nonce": "0011223344556677",
+    "dongle_nonce": "ffeeddccbbaa9988",
+    "welcome_sig": "3cb67698431dca1e3bf6781b4384807f38150bf3cce876a430127d986e3cbaea",
+    "auth_sig": "380437f8a687e6d5e56c6b147c5f4aef2e814b97b648ab394a075e9afb10925f",
+    "cmds": [
+      {
+        "id": 1,
+        "action": "shutdown",
+        "sig": "1ee345c5aa9d3ce4bd1b8517449ee526493f0d5b3517f84b05324b82f4f43604"
+      },
+      {
+        "id": 2,
+        "action": "reboot",
+        "sig": "675fd8ff4cee7d6523630fa7d6d75bb330402ab620d8cd720e1f87e5a493ccf4"
+      }
+    ]
+  },
+  "messages": {
+    "valid": [
+      {
+        "t": "hello",
+        "v": 1,
+        "host": "thinkstation",
+        "os": "linux",
+        "agent_ver": "1.0.0",
+        "macs": [
+          "fc:9d:05:18:ee:32"
+        ],
+        "nonce": "0011223344556677"
+      },
+      {
+        "t": "welcome",
+        "v": 1,
+        "fw": "1.0.0",
+        "dev": "907069f662dc",
+        "nonce": "ffeeddccbbaa9988",
+        "sig": "3cb67698431dca1e3bf6781b4384807f38150bf3cce876a430127d986e3cbaea"
+      },
+      {
+        "t": "auth",
+        "sig": "380437f8a687e6d5e56c6b147c5f4aef2e814b97b648ab394a075e9afb10925f"
+      },
+      {
+        "t": "ready"
+      },
+      {
+        "t": "tele",
+        "seq": 1,
+        "cpu": 123,
+        "mem": 456,
+        "disk_free": 789,
+        "uptime": 3600
+      },
+      {
+        "t": "hb"
+      },
+      {
+        "t": "notice",
+        "action": "shutdown",
+        "in": 10
+      },
+      {
+        "t": "cmd",
+        "id": 1,
+        "action": "shutdown",
+        "sig": "1ee345c5aa9d3ce4bd1b8517449ee526493f0d5b3517f84b05324b82f4f43604"
+      },
+      {
+        "t": "ack",
+        "id": 1,
+        "ok": true
+      },
+      {
+        "t": "ack",
+        "id": 2,
+        "ok": false,
+        "err": "bad_sig"
+      },
+      {
+        "t": "err",
+        "code": "unauth"
+      },
+      {
+        "t": "pair",
+        "v": 1,
+        "nonce": "a1b2c3d4e5f60718"
+      },
+      {
+        "t": "pair_chal",
+        "nonce": "0f1e2d3c4b5a6978"
+      },
+      {
+        "t": "pair_confirm",
+        "sig": "7eed7edf9475181fc251700d790bcd3ce8e530bf48eb1b4b53f58871fbbd2fd4"
+      },
+      {
+        "t": "pair_ok",
+        "sig": "3a529a79978e442848eb6f3ee60dab31b51f246aa9aac1a791fd95635fff4573"
+      }
+    ],
+    "invalid": [
+      {
+        "line": "{\"t\":\"tele\",\"cpu\":",
+        "why": "truncated JSON"
+      },
+      {
+        "line": "{\"t\":\"tele\",\"seq\":1,\"cpu\":1001,\"mem\":0,\"disk_free\":0,\"uptime\":0}",
+        "why": "cpu out of range 0..1000"
+      },
+      {
+        "line": "{\"t\":\"nope\"}",
+        "why": "unknown type"
+      },
+      {
+        "line": "{\"t\":\"hello\",\"v\":2,\"nonce\":\"a1b2c3d4e5f60718\"}",
+        "why": "unsupported version"
+      },
+      {
+        "line": "{\"t\":\"cmd\",\"id\":1,\"action\":\"format_disk\",\"sig\":\"00\"}",
+        "why": "unknown action"
+      },
+      {
+        "line": "{\"t\":\"hb\",\"pad\":\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\"}",
+        "why": "line longer than 512 bytes"
+      },
+      {
+        "line": "[1,2,3]",
+        "why": "not an object"
+      }
+    ]
+  },
+  "cmd_bad_sig": {
+    "id": 2,
+    "action": "reboot",
+    "sig": "0000000000000000000000000000000000000000000000000000000000000000",
+    "expect": "reject"
+  }
+}

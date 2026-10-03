@@ -1,0 +1,15 @@
+# Configuración de gitleaks para MicroESP (job "secrets" de CI).
+# Se parte de las reglas por defecto y solo se excluyen los vectores de prueba
+# del protocolo cdc-v1: sus claves y firmas son públicas y normativas (las usan
+# los tests del agente y del firmware), no secretos reales.
+title = "MicroESP gitleaks config"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Vectores de prueba públicos del protocolo cdc-v1 y plantillas con valores de relleno"
+paths = [
+  '''^protocol/testdata/vectors\.json$''',
+  '''(^|/)tuya_secrets\.h\.example$''',
+]

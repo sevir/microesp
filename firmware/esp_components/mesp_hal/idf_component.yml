@@ -1,0 +1,8 @@
+dependencies:
+  idf: ">=5.4"
+  espressif/esp_tinyusb: "~2.3.0"
+  espressif/led_strip: "^3.0.0"
+  # Workaround: TuyaOpen v1.9.0 platform requests espressif/esp-sr ^2.0.0 without a
+  # lock file; esp-sr >=2.5.0 pulls esp-dl 3.3.x which needs MALLOC_CAP_SIMD
+  # (absent in IDF v5.4.0). Pin the last esp-sr compatible with IDF v5.4.0.
+  espressif/esp-sr: "==2.4.7"

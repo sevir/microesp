@@ -1,0 +1,6 @@
+# build outputs
+.build/
+dist/
+test/host/build/
+# Tuya credentials (template: include/tuya_secrets.h.example)
+include/tuya_secrets.h

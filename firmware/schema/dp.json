@@ -1,0 +1,26 @@
+{
+  "product": "MicroESP",
+  "doc": "Custom Tuya product DPs (docs/analisis/00-analisis-arquitectura.md section 5). DP 105 is reserved (USB voltage dropped). Must stay in sync with src/core/dp_model.c (checked by test/host).",
+  "report_policy": {
+    "mode": "async: change thresholds + per-DP throttle; every DP force-reported on MQTT connect",
+    "telemetry": "106/107/108: change >= 20 tenths (min 5 s apart) or any change every 30 s",
+    "pc_uptime": "111: at most once per 60 s",
+    "rate_limit": "every DP min interval >= 300 ms (Tuya limit 200 reports/DP/60 s)"
+  },
+  "dps": [
+    {"id": 101, "code": "pc_state", "type": "enum", "mode": "ro", "range": ["off", "sleep", "booting", "on_no_agent", "on", "unknown"], "source": "dongle"},
+    {"id": 102, "code": "power_on", "type": "bool", "mode": "rw", "note": "push button: true triggers wake (method DP 110), dongle reports it back to false", "source": "dongle"},
+    {"id": 103, "code": "power_off", "type": "bool", "mode": "rw", "note": "true -> shutdown after DP 113 countdown; false while counting cancels; reset to false when finished", "source": "agent"},
+    {"id": 104, "code": "reboot", "type": "bool", "mode": "rw", "note": "true -> reboot after DP 113 countdown; false while counting cancels; reset to false when finished", "source": "agent"},
+    {"id": 106, "code": "cpu_usage", "type": "value", "mode": "ro", "min": 0, "max": 1000, "scale": 1, "step": 1, "unit": "%", "source": "agent"},
+    {"id": 107, "code": "mem_usage", "type": "value", "mode": "ro", "min": 0, "max": 1000, "scale": 1, "step": 1, "unit": "%", "source": "agent"},
+    {"id": 108, "code": "disk_free", "type": "value", "mode": "ro", "min": 0, "max": 1000, "scale": 1, "step": 1, "unit": "%", "source": "agent"},
+    {"id": 109, "code": "agent_online", "type": "bool", "mode": "ro", "source": "dongle"},
+    {"id": 110, "code": "wake_method", "type": "enum", "mode": "rw", "range": ["hid", "wol", "hid_then_wol"], "default": "hid_then_wol", "persisted": "NVS", "source": "dongle"},
+    {"id": 111, "code": "pc_uptime", "type": "value", "mode": "ro", "min": 0, "max": 999999999, "scale": 0, "step": 1, "unit": "s", "source": "agent"},
+    {"id": 112, "code": "pc_hostname", "type": "string", "mode": "ro", "maxlen": 64, "source": "agent"},
+    {"id": 113, "code": "cmd_countdown", "type": "value", "mode": "rw", "min": 0, "max": 60, "scale": 0, "step": 1, "unit": "s", "default": 10, "persisted": "NVS", "source": "dongle"},
+    {"id": 114, "code": "last_result", "type": "enum", "mode": "ro", "range": ["ok", "wake_sent", "wake_failed", "cmd_rejected", "agent_offline", "cancelled"], "source": "dongle"},
+    {"id": 115, "code": "fault", "type": "bitmap", "mode": "ro", "label": ["agent_lost", "wake_failed", "hid_not_armed", "cloud_lost"], "maxlen": 4, "source": "dongle"}
+  ]
+}

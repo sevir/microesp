@@ -1,0 +1,31 @@
+# /etc/microesp/agent.toml — configuración de microesp-agent
+# Todas las claves son opcionales; se muestran los valores por defecto.
+# Overrides: variables MICROESP_* y flags (--device, --key-file, --dry-run,
+# --power-backend, --log-level).
+
+# Puerto serie del dongle o "auto" (busca VID 303a / PID 4002 o producto "MicroESP").
+# Con la regla udev instalada también vale "/dev/microesp".
+device = "auto"
+
+# Clave compartida (hex, modo 0600) creada por `microesp-agent pair`.
+key_file = "/etc/microesp/agent.key"
+
+# Sistemas de ficheros vigilados: se informa el MENOR % libre.
+disks = ["/"]
+
+# Telemetría: cada telemetry_interval o cuando un valor cambia más de 2 puntos.
+telemetry_interval = "10s"
+
+# Latido si no se envió nada (el dongle marca offline a los 15 s). Es también
+# la ventana de medida de CPU.
+heartbeat_interval = "5s"
+
+# true = registrar las órdenes de apagado/reinicio sin ejecutarlas.
+dry_run = false
+
+# "systemd" (systemctl poweroff|reboot), "logind-dbus" (busctl → logind)
+# o "windows" (shutdown /s|/r /t 0, solo en Windows).
+power_backend = "systemd"
+
+# debug | info | warn | error
+log_level = "info"

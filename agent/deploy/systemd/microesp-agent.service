@@ -1,0 +1,58 @@
+# /etc/systemd/system/microesp-agent.service
+[Unit]
+Description=MicroESP agent (enlace USB con el dongle MicroESP)
+Documentation=https://github.com/microesp/agent
+# El agente descubre y reabre el dongle por sí mismo (backoff 1..30 s),
+# así que no se ata al .device: sigue vivo aunque el dongle se desenchufe.
+After=dbus.service systemd-logind.service
+Wants=dbus.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/microesp-agent run --config /etc/microesp/agent.toml
+User=microesp
+# Grupo primario = el del usuario (microesp): /etc/microesp es root:microesp
+# 0750 y agent.toml 0640. Con Group=dialout el proceso NO pertenecería al
+# grupo microesp y no podría leer la configuración ni la clave.
+SupplementaryGroups=dialout
+Restart=always
+RestartSec=3
+UMask=0077
+
+# --- Endurecimiento -------------------------------------------------------
+# El apagado/reinicio se pide a logind por D-Bus (systemctl/busctl, AF_UNIX)
+# y lo autoriza la regla polkit 50-microesp.rules; no hacen falta
+# capacidades ni root.
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+ProtectSystem=strict
+ReadOnlyPaths=/
+ProtectHome=yes
+PrivateTmp=yes
+DevicePolicy=closed
+DeviceAllow=char-ttyACM rw
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+RestrictAddressFamilies=AF_UNIX AF_NETLINK
+IPAddressDeny=any
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RemoveIPC=yes
+KeyringMode=private
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged
+SystemCallErrorNumber=EPERM
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,112 @@
+# Compilación del firmware (TuyaOpen v1.9.0 + ESP-IDF v5.4). Reutilizable desde ci.yml y release.yml.
+# Reproduce docs/dev-setup.md sin interacción y sin credenciales reales:
+#   TuyaOpen fijado al commit b80932d, ./export.sh (uv + Python 3.12), tos.py check,
+#   board POCKET_DONGLE_S3 (firmware/install-board.sh, lo llama build.sh), esp-sr ==2.4.7
+#   (firmware/esp_components/mesp_hal/idf_component.yml) y tuya_secrets.h de relleno.
+name: firmware-build
+
+on:
+  workflow_call:
+    outputs:
+      version:
+        description: Versión del firmware (CONFIG_PROJECT_VERSION)
+        value: ${{ jobs.build.outputs.version }}
+
+permissions:
+  contents: read
+
+env:
+  TUYAOPEN_REPO: https://github.com/tuya/TuyaOpen
+  TUYAOPEN_TAG: v1.9.0
+  TUYAOPEN_SHA: b80932db6d9e0be1c5692aafb00b3109f3caf134
+
+jobs:
+  build:
+    name: firmware-build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    env:
+      OPEN_SDK_ROOT: ${{ github.workspace }}/.tuyaopen
+      # Sin tos-env.sh local: build.sh hace ". $OPEN_SDK_ROOT/export.sh".
+      TOS_ENV: /nonexistent
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependencias del sistema (ESP-IDF / TuyaOpen)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git wget flex bison gperf cmake ninja-build ccache \
+            libffi-dev libssl-dev dfu-util libusb-1.0-0 python3 python3-venv
+
+      - name: Clonar TuyaOpen (commit fijado)
+        run: |
+          git clone --depth 1 --branch "$TUYAOPEN_TAG" "$TUYAOPEN_REPO" "$OPEN_SDK_ROOT"
+          got=$(git -C "$OPEN_SDK_ROOT" rev-parse HEAD)
+          if [ "$got" != "$TUYAOPEN_SHA" ]; then
+            echo "::error::TuyaOpen $TUYAOPEN_TAG apunta a $got, se esperaba $TUYAOPEN_SHA"
+            exit 1
+          fi
+          # Evita el prompt interactivo de actualización de plataforma.
+          mkdir -p "$OPEN_SDK_ROOT/.cache"
+          touch "$OPEN_SDK_ROOT/.cache/.dont_prompt_update_platform"
+
+      # Caché de la plataforma ESP32 (TuyaOpen-esp32 + esp-idf v5.4 + herramientas .espressif,
+      # ~3 GB comprimidos) y del entorno Python de TuyaOpen. La clave cambia con el commit de
+      # TuyaOpen y con el manifiesto de componentes (pin de esp-sr).
+      - name: Caché TuyaOpen / ESP-IDF
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.espressif
+            ${{ github.workspace }}/.tuyaopen/.tools
+            ${{ github.workspace }}/.tuyaopen/.venv
+            ${{ github.workspace }}/.tuyaopen/platform/ESP32
+            !${{ github.workspace }}/.tuyaopen/platform/ESP32/.espressif/dist
+            !${{ github.workspace }}/.tuyaopen/platform/ESP32/tuya_open_sdk/build
+          key: tuyaopen-${{ runner.os }}-${{ env.TUYAOPEN_SHA }}-${{ hashFiles('firmware/esp_components/*/idf_component.yml') }}
+
+      - name: Entorno TuyaOpen (export.sh + tos.py check)
+        working-directory: ${{ env.OPEN_SDK_ROOT }}
+        run: |
+          . ./export.sh </dev/null
+          tos.py check
+
+      - name: Comprobar pin de esp-sr
+        run: |
+          grep -q 'espressif/esp-sr: "==2.4.7"' firmware/esp_components/mesp_hal/idf_component.yml
+          # Un lock resuelto con otra versión (caché antigua) se descarta.
+          lock="$OPEN_SDK_ROOT/platform/ESP32/tuya_open_sdk/dependencies.lock"
+          if [ -f "$lock" ] && ! grep -A12 'espressif/esp-sr:' "$lock" | grep -q 'version: 2.4.7'; then
+            echo "dependencies.lock con otra esp-sr: se borra"; rm -f "$lock"
+          fi
+
+      - name: Credenciales de relleno (sin secretos)
+        run: cp firmware/include/tuya_secrets.h.example firmware/include/tuya_secrets.h
+
+      - name: Compilar
+        run: firmware/build.sh
+
+      - name: Versión y SHA256SUMS
+        id: ver
+        run: |
+          ver=$(sed -n 's/^CONFIG_PROJECT_VERSION="\(.*\)"/\1/p' firmware/app_default.config)
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+          d="firmware/dist/microesp_${ver}"
+          ls -l "$d"
+          test -f "$d/microesp_QIO_${ver}.bin"
+          lock="$OPEN_SDK_ROOT/platform/ESP32/tuya_open_sdk/dependencies.lock"
+          if grep -A12 'espressif/esp-sr:' "$lock" | grep -q 'version: 2.4.7'; then echo "esp-sr 2.4.7 OK"; else echo "::warning::esp-sr no resuelto a 2.4.7"; fi
+          (cd "$d" && sha256sum ./*.bin > SHA256SUMS && cat SHA256SUMS)
+
+      - name: Subir binarios
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ steps.ver.outputs.version }}
+          path: |
+            firmware/dist/microesp_${{ steps.ver.outputs.version }}/*.bin
+            firmware/dist/microesp_${{ steps.ver.outputs.version }}/SHA256SUMS
+          if-no-files-found: error
+          retention-days: 30

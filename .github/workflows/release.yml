@@ -1,0 +1,63 @@
+# Release en tags v*: agente (goreleaser: linux amd64/arm64, windows amd64) + firmware,
+# con un único SHA256SUMS que cubre todos los ficheros publicados.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  firmware:
+    uses: ./.github/workflows/firmware-build.yml
+
+  release:
+    needs: firmware
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: La etiqueta coincide con la versión del firmware
+        env:
+          FW_VERSION: ${{ needs.firmware.outputs.version }}
+        run: |
+          if [ "${GITHUB_REF_NAME#v}" != "$FW_VERSION" ]; then
+            echo "::error::tag $GITHUB_REF_NAME != CONFIG_PROJECT_VERSION $FW_VERSION (firmware/app_default.config)"
+            exit 1
+          fi
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: firmware-${{ needs.firmware.outputs.version }}
+          path: agent/.release-firmware/raw
+
+      # Se publican la imagen fusionada (flashear en 0x0) y la app (OTA / esptool en 0x10000).
+      - name: Preparar binarios del firmware
+        env:
+          V: ${{ needs.firmware.outputs.version }}
+        run: |
+          cd agent/.release-firmware/raw
+          sha256sum -c SHA256SUMS
+          cp "microesp_QIO_${V}.bin" "../microesp-firmware_${V}_merged.bin"
+          cp microesp.bin "../microesp-firmware_${V}_app.bin"
+          ls -l ..
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: agent/go.mod
+          cache-dependency-path: agent/go.sum
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          workdir: agent
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,41 @@
+# --- Datos locales de herramientas (se conserva .pando.toml) ---
+/.pando/data/
+/.pando/mesnada/logs/
+/.pando/mesnada/tasks.json
+
+# --- Salidas de compilación ---
+dist/
+.build/
+build/
+managed_components/
+dependencies.lock
+sdkconfig
+sdkconfig.old
+coverage.out
+/agent/microesp-agent
+/agent/microesp-agent.exe
+
+# --- Dependencias descargadas por CI (scripts/ci/fetch-host-test-deps.sh) ---
+/.ci-deps/
+/agent/.release-firmware/
+/.tuyaopen/
+
+# --- Secretos y credenciales: NUNCA al repositorio ---
+tuya_secrets.h
+tuya_config_secrets.h
+*.key
+*.pem
+.env
+
+# --- Copias de seguridad de flash de fábrica (solo SHA256SUMS va al repo) ---
+hw/factory-backup/*.bin
+*_factory_*.bin
+
+# --- Editores / SO ---
+.vscode/
+.idea/
+*.swp
+*~
+.DS_Store
+__pycache__/
+*.pyc

@@ -1,0 +1,19 @@
+# MicroESP overlay appended to the TuyaOpen platform sdkconfig defaults via
+# SDKCONFIG_DEFAULTS (see build.sh). Later files win, so this can also override
+# platform values. Changes need "./build.sh clean".
+
+# --- TinyUSB composite HID + CDC (from the MESP-US-0003 spike)
+CONFIG_TINYUSB_CDC_ENABLED=y
+CONFIG_TINYUSB_CDC_COUNT=1
+CONFIG_TINYUSB_HID_COUNT=1
+CONFIG_TINYUSB_SUSPEND_CALLBACK=y
+CONFIG_TINYUSB_RESUME_CALLBACK=y
+CONFIG_TINYUSB_DESC_USE_ESPRESSIF_VID=y
+# CONFIG_TINYUSB_DESC_USE_DEFAULT_PID is not set
+CONFIG_TINYUSB_DESC_CUSTOM_PID=0x4002
+CONFIG_TINYUSB_DESC_MANUFACTURER_STRING="MicroESP"
+CONFIG_TINYUSB_DESC_PRODUCT_STRING="MicroESP"
+
+# --- OTA app rollback (US-0011): disabled in the TuyaOpen platform sdkconfig.
+# New OTA images boot as PENDING_VERIFY; src/ota.c marks them valid after a health check.
+CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y

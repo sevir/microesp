@@ -1,0 +1,25 @@
+config CHIP_CHOICE
+    string
+    default "esp32s3"
+
+config BOARD_CHOICE
+    string
+    default "POCKET_DONGLE_S3"
+
+# Pocket-Dongle-S3 (LilyGO T-Dongle-S3 clone): ESP32-S3R8 (8 MB octal PSRAM), 16 MB flash.
+# Console stays on UART0 (+USJ secondary): the USB PHY is taken by TinyUSB at runtime.
+config BOARD_CONFIG
+    bool
+    default y
+    select ENABLE_EXT_RAM
+    select PLATFORM_FLASHSIZE_16M
+
+config UART_NUM0_TX_PIN
+    int "UART_NUM0_TX_PIN"
+    range 0 44
+    default 43
+
+config UART_NUM0_RX_PIN
+    int "UART_NUM0_RX_PIN"
+    range 0 44
+    default 44
