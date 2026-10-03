@@ -53,7 +53,7 @@ Antes de cada caso: el PC en el estado indicado y el dongle conectado a la nube.
 
 | Caso | Pasos | Esperado | Resultado | Evidencia |
 |---|---|---|---|---|
-| E2E-20 Apagado (dry-run) | `dry_run = true`; app → Apagar | Cuenta atrás en la pantalla (DP 113) y LED rojo; `cmd` firmado → `ack ok`; log `dry-run`; `last_result=ok`; DP 103 vuelve a `false` | | |
+| E2E-20 Apagado (dry-run) | `dry_run = true`; app → Apagar | Cuenta atrás en la pantalla (DP 112) y LED rojo; `cmd` firmado → `ack ok`; log `dry-run`; `last_result=ok`; DP 103 vuelve a `false` | | |
 | E2E-21 Apagado real | `dry_run = false`; app → Apagar | El PC se apaga tras la cuenta atrás; `pc_state` → `off` | | |
 | E2E-22 Reinicio real | app → Reiniciar | El PC reinicia; el agente reconecta (`on`) | | |
 | E2E-23 Cancelar con el botón | app → Apagar; pulsación corta durante la cuenta atrás | `last_result=cancelled`; `notice{cancel}`; el PC sigue encendido | | |
@@ -78,10 +78,10 @@ Antes de cada caso: el PC en el estado indicado y el dongle conectado a la nube.
 
 | Caso | Pasos | Esperado | Resultado | Evidencia |
 |---|---|---|---|---|
-| E2E-40 CPU | Carga con `stress-ng --cpu 0 -t 60s`; comparar con `top`/`mpstat 5` | DP 106 dentro de ±5 puntos | | |
-| E2E-41 Memoria | Comparar con `free -m` (usada sin caché ni buffers) | DP 107 dentro de ±2 puntos | | |
-| E2E-42 Disco libre | Comparar con `df -h /` (y los discos configurados) | DP 108 = menor % libre, ±1 punto | | |
-| E2E-43 Uptime y hostname | Comparar con `uptime -p` y `hostname` | DP 111 (≤ 1 reporte/min) y DP 112 correctos | | |
+| E2E-40 CPU | Carga con `stress-ng --cpu 0 -t 60s`; comparar con `top`/`mpstat 5` | DP 105 dentro de ±5 puntos | | |
+| E2E-41 Memoria | Comparar con `free -m` (usada sin caché ni buffers) | DP 106 dentro de ±2 puntos | | |
+| E2E-42 Disco libre | Comparar con `df -h /` (y los discos configurados) | DP 107 = menor % libre, ±1 punto | | |
+| E2E-43 Uptime y hostname | Comparar con `uptime -p` y `hostname` | DP 110 (≤ 1 reporte/min) y DP 111 correctos | | |
 | E2E-44 MACs para WOL | `!status` (con el agente parado) | `macs≥1`; incluye `fc:9d:05:18:ee:32` | | |
 
 ## 6. OTA

@@ -131,12 +131,12 @@ Cuando todo funcione, vuelve a poner `dry_run = false`. El plan de pruebas compl
 | `permission denied` en `/dev/ttyACM*` | El usuario no está en `dialout`, o no se ha aplicado la regla udev: `sudo udevadm trigger` o `sg dialout -c ...`. |
 | `device or resource busy` | El agente tiene el puerto abierto: `sudo systemctl stop microesp-agent`. |
 | El dongle no aparece en Smart Life | Wi-Fi de 5 GHz, Bluetooth o ubicación desactivados, o credenciales de relleno (`!status`). Haz el reset de Tuya (botón 10 s) y repite. |
-| `cloud_lost` (bit 3 del DP 115) o iconos de nube tachados | No hay Wi-Fi o MQTT. Revisa la cobertura y que la licencia (UUID/AuthKey) sea válida. |
+| `cloud_lost` (bit 3 del DP 114) o iconos de nube tachados | No hay Wi-Fi o MQTT. Revisa la cobertura y que la licencia (UUID/AuthKey) sea válida. |
 | `dongle error: not_paired` / `welcome signature invalid` | Vuelve a emparejar (§5). La clave anterior se sustituye en los dos lados. |
 | `agent_offline` al apagar | El agente no está conectado: `systemctl status microesp-agent`. |
 | `cmd_rejected` | El agente rechazó o no confirmó la orden en 10 s. Revisa en `journalctl -u microesp-agent` si hay `bad_sig`/`replay`. |
 | `Access denied` / `interactive authentication required` al apagar | Falta la regla polkit, o hay un inhibidor activo (`systemd-inhibit --list`). |
-| `hid_not_armed` (bit 2 del DP 115) | El host suspendió el USB sin armar el remote wakeup: revisa `power/wakeup` ([`bios-lenovo.md` §3.1](bios-lenovo.md#31-permitir-que-el-dongle-despierte-el-equipo-s3)). |
+| `hid_not_armed` (bit 2 del DP 114) | El host suspendió el USB sin armar el remote wakeup: revisa `power/wakeup` ([`bios-lenovo.md` §3.1](bios-lenovo.md#31-permitir-que-el-dongle-despierte-el-equipo-s3)). |
 | `wake_failed` | En 120 s el PC no montó el bus USB. Revisa la BIOS (ErP, Always On USB), el WOL de la NIC y que el dongle tenga las MACs (`macs=` en `!status`). |
 | ModemManager envía `AT` al dongle | Falta la regla udev (`ID_MM_DEVICE_IGNORE`). Reinstala el agente. |
 | Recuperación total | Restaura el firmware de fábrica ([`docs/dev-setup.md` §6](../dev-setup.md#6-restaurar-el-firmware-de-fábrica)). |

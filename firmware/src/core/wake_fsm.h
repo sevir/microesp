@@ -1,7 +1,7 @@
 /*
  * MicroESP — power-on ("wake") sequencing (US-0014), pure C and host-tested.
  *
- * Methods (DP 110): hid, wol, hid_then_wol.
+ * Methods (DP 109): hid, wol, hid_then_wol.
  *  - PC already up (mounted & !suspended)  -> ignored.
  *  - HID: bus suspended with remote wakeup armed -> tud_remote_wakeup();
  *         otherwise (not mounted / not armed) -> forced resume signalling

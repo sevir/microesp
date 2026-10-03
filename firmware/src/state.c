@@ -1,6 +1,6 @@
 /*
- * MicroESP — PC state (DP 101), agent_online (DP 109 via agent_link) and the fault
- * bitmap (DP 115). Logic: core/pc_state.c (host-tested transition table).
+ * MicroESP — PC state (DP 101), agent_online (DP 108 via agent_link) and the fault
+ * bitmap (DP 114). Logic: core/pc_state.c (host-tested transition table).
  */
 #include "mesp_hal.h"
 #include "modules.h"

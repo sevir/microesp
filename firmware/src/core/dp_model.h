@@ -18,20 +18,19 @@ enum {
     DP_POWER_ON = 102,
     DP_POWER_OFF = 103,
     DP_REBOOT = 104,
-    /* 105 reserved (USB voltage, dropped) */
-    DP_CPU = 106,
-    DP_MEM = 107,
-    DP_DISK_FREE = 108,
-    DP_AGENT_ONLINE = 109,
-    DP_WAKE_METHOD = 110,
-    DP_PC_UPTIME = 111,
-    DP_PC_HOSTNAME = 112,
-    DP_CMD_COUNTDOWN = 113,
-    DP_LAST_RESULT = 114,
-    DP_FAULT = 115,
+    DP_CPU = 105,
+    DP_MEM = 106,
+    DP_DISK_FREE = 107,
+    DP_AGENT_ONLINE = 108,
+    DP_WAKE_METHOD = 109,
+    DP_PC_UPTIME = 110,
+    DP_PC_HOSTNAME = 111,
+    DP_CMD_COUNTDOWN = 112,
+    DP_LAST_RESULT = 113,
+    DP_FAULT = 114,
 };
 
-/* DP 115 fault bits */
+/* DP 114 fault bits */
 #define FAULT_AGENT_LOST    (1u << 0)
 #define FAULT_WAKE_FAILED   (1u << 1)
 #define FAULT_HID_NOT_ARMED (1u << 2)

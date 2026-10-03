@@ -26,7 +26,7 @@ firmware/
 │   ├── usb_composite.c    # eventos USB → app y hid_not_armed
 │   ├── agent_link.c       # sesión cdc-v1 con el agente
 │   ├── pairing.c          # modo emparejado del agente (código de 6 dígitos)
-│   ├── state.c            # pc_state (DP 101) y bitmap de fallos (DP 115)
+│   ├── state.c            # pc_state (DP 101) y bitmap de fallos (DP 114)
 │   ├── wake.c             # encendido HID / WOL
 │   ├── power.c            # apagado/reinicio con cuenta atrás
 │   ├── button.c led.c display.c ota.c cli.c
@@ -159,7 +159,7 @@ Cualquier proceso con acceso al puerto (grupo `dialout` o root) puede escribir e
 | `!auth clear` | no | sí | borra de NVS el UUID, la AuthKey y el PID |
 | `!pair`, `!unpair` | no | sí | modo emparejado del agente / olvidar la clave |
 | `!wake [force]` | no | sí | sin `force` solo muestra el plan (simulación); con `force` ejecuta el encendido. Se ignora si el PC está encendido |
-| `!method <hid\|wol\|hid_then_wol>`, `!countdown <0..60>` | no | sí | DP 110 / DP 113 sin pasar por la nube |
+| `!method <hid\|wol\|hid_then_wol>`, `!countdown <0..60>` | no | sí | DP 109 / DP 112 sin pasar por la nube |
 | `!cmd <shutdown\|reboot> [cuenta_atrás] [retardo_s]` | no | sí | simula DP 103/104. El retardo permite arrancar el agente antes de que se dispare |
 | `!key` | no | sí | pulsa y suelta Shift izquierda (inofensivo; solo con el bus activo) |
 | `!reset-tuya` | no | sí | desvincula de Tuya |
@@ -177,7 +177,7 @@ Herramienta: `tools/mesp_cdc.py '!status' '!dp'` (con `sg dialout` y el Python d
 | Gesto | Acción |
 |---|---|
 | Pulsación corta | cancela la cuenta atrás de apagado/reinicio; si no hay, cambia de pantalla |
-| Doble pulsación (< 400 ms) | enciende el PC (método del DP 110) |
+| Doble pulsación (< 400 ms) | enciende el PC (método del DP 109) |
 | Mantener 3-5 s y soltar | modo emparejado del agente |
 | Mantener 5-10 s y soltar | ventana de aprovisionamiento: `!auth`/`!pid` aceptados 120 s en release |
 | Mantener 10-20 s y soltar | reset de fábrica Tuya (desvincula y vuelve a BLE/AP) |
@@ -210,8 +210,8 @@ Pantallas: **estado** (estado del PC, hostname, iconos Wi-Fi/nube/agente y versi
 Tabla completa en `schema/dp.json`. Resumen:
 
 - **101 `pc_state`**: estado del PC. **102 `power_on`**: pulsador; vuelve a `false`. **103/104 `power_off`/`reboot`**: `true` lanza la cuenta atrás y `false` durante la cuenta atrás la cancela; vuelven a `false` al terminar.
-- **106/107/108**: CPU, memoria y disco libre en décimas de %, de 0 a 1000. **109 `agent_online`**. **110 `wake_method`**: guardado en NVS. **111 `pc_uptime`**. **112 `pc_hostname`**. **113 `cmd_countdown`**: de 0 a 60, 10 por defecto, guardado en NVS. **114 `last_result`**.
-- **115 `fault`**: bit0 `agent_lost`, bit1 `wake_failed`, bit2 `hid_not_armed`, bit3 `cloud_lost` (sin `vbus_low`). El DP 105 queda reservado.
+- **105/106/107**: CPU, memoria y disco libre en décimas de %, de 0 a 1000. **108 `agent_online`**. **109 `wake_method`**: guardado en NVS. **110 `pc_uptime`**. **111 `pc_hostname`**. **112 `cmd_countdown`**: de 0 a 60, 10 por defecto, guardado en NVS. **113 `last_result`**.
+- **114 `fault`**: bit0 `agent_lost`, bit1 `wake_failed`, bit2 `hid_not_armed`, bit3 `cloud_lost` (sin `vbus_low`). IDs seguidos: la plataforma Tuya los asigna en secuencia.
 - **Política de reporte**: asíncrono, desde la tarea de aplicación y solo con MQTT conectado.
   - Telemetría: si cambia ≥ 20 décimas (con al menos 5 s entre reportes) o cualquier cambio cada 30 s.
   - Uptime: como mucho uno por minuto.
@@ -255,7 +255,7 @@ Si el PC ya está encendido (bus montado y no suspendido), la orden se ignora.
 ## Apagado / reinicio (US-0016)
 
 1. DP 103/104 a `true`: si el agente no está en línea, `last_result=agent_offline`.
-2. Si está en línea, empieza la cuenta atrás del DP 113 y se envía `notice{action,in}`. Durante la cuenta atrás se puede cancelar con la pulsación corta, con el DP a `false` o con `!cancel`; el resultado es `cancelled` y se envía `notice{cancel}`.
+2. Si está en línea, empieza la cuenta atrás del DP 112 y se envía `notice{action,in}`. Durante la cuenta atrás se puede cancelar con la pulsación corta, con el DP a `false` o con `!cancel`; el resultado es `cancelled` y se envía `notice{cancel}`.
 3. Al terminar la cuenta atrás se envía el `cmd` firmado (HMAC con los nonces de la sesión e id creciente por sesión).
 4. Con `ack ok`, `last_result=ok`. Con `ack` negativo o sin respuesta en 10 s, `cmd_rejected`.
 5. Los DP 103/104 vuelven a `false`.

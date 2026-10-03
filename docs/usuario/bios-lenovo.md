@@ -51,7 +51,7 @@ grep -i xhc /proc/acpi/wakeup
 
 Si el controlador `XHC` aparece como `*disabled`, actívalo con `echo XHC | sudo tee /proc/acpi/wakeup`. Ten en cuenta que esa orden **alterna** el estado y no persiste tras reiniciar. Si hace falta, crea una unidad systemd o una regla udev para el controlador PCI (`ATTR{power/wakeup}="enabled"` sobre el dispositivo xHCI).
 
-El firmware informa del fallo `hid_not_armed` (bit 2 del DP 115) si el host suspende el bus sin armar el *remote wakeup*: indica que esta parte no está bien configurada.
+El firmware informa del fallo `hid_not_armed` (bit 2 del DP 114) si el host suspende el bus sin armar el *remote wakeup*: indica que esta parte no está bien configurada.
 
 ### 3.2 Wake-on-LAN en la NIC
 
@@ -86,7 +86,7 @@ Prepara siempre una vía de recuperación: el **botón de encendido físico** si
 
 1. El dongle está enchufado en el puerto elegido y conectado a Smart Life (el DP `pc_state` muestra `on`).
 2. El agente está activo y emparejado: `systemctl status microesp-agent` y `agent_online = true` en la app.
-3. El método de encendido (DP 110 `wake_method`) es `hid_then_wol` (valor por defecto).
+3. El método de encendido (DP 109 `wake_method`) es `hid_then_wol` (valor por defecto).
 4. El dongle tiene las MACs del PC (el agente conectó después de emparejar).
 
 ### 4.2 Suspensión (S3)
@@ -110,8 +110,8 @@ Muchas instalaciones de Pop!_OS/Ubuntu no tienen la hibernación configurada (re
 
 ### 4.4 Apagado (S5)
 
-1. Primero solo **WOL**: pon el DP 110 en `wol`, apaga con `systemctl poweroff` y, desde la app, pulsa **Encender**. Si el dongle se apaga junto con el PC (puerto sin alimentación en S5), el WOL no podrá salir del dongle: pruébalo antes desde otro equipo con `wakeonlan`.
-2. Después solo **HID**: DP 110 = `hid`, apaga y pulsa **Encender**. El firmware fuerza la señal de *resume* 3 veces con 2 s de separación. Solo funciona si la BIOS vigila el puerto en S5 (ajustes 3 y 4 de la tabla).
+1. Primero solo **WOL**: pon el DP 109 en `wol`, apaga con `systemctl poweroff` y, desde la app, pulsa **Encender**. Si el dongle se apaga junto con el PC (puerto sin alimentación en S5), el WOL no podrá salir del dongle: pruébalo antes desde otro equipo con `wakeonlan`.
+2. Después solo **HID**: DP 109 = `hid`, apaga y pulsa **Encender**. El firmware fuerza la señal de *resume* 3 veces con 2 s de separación. Solo funciona si la BIOS vigila el puerto en S5 (ajustes 3 y 4 de la tabla).
 3. Por último, el método por defecto `hid_then_wol`.
 4. Si a los 120 s el bus USB no se ha montado, el dongle pone `last_result = wake_failed`. En ese caso enciende con el botón físico y revisa la tabla de §2.
 

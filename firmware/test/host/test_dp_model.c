@@ -23,10 +23,10 @@ static bool has(const uint8_t *ids, int n, uint8_t id)
 
 static void test_table_matches_spec(void)
 {
-    const uint8_t ids[] = {101, 102, 103, 104, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115};
+    const uint8_t ids[] = {101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114};
     TEST_ASSERT_EQUAL(sizeof(ids), DPM_COUNT);
     for (size_t i = 0; i < sizeof(ids); i++) TEST_ASSERT_NOT_NULL(dpm_desc(ids[i]));
-    TEST_ASSERT_NULL(dpm_desc(105)); /* reserved */
+    TEST_ASSERT_NULL(dpm_desc(115)); /* unknown */
     TEST_ASSERT_EQUAL(DPT_ENUM, dpm_desc(DP_PC_STATE)->type);
     TEST_ASSERT_EQUAL(5, dpm_desc(DP_PC_STATE)->max);
     TEST_ASSERT_EQUAL(DPT_BITMAP, dpm_desc(DP_FAULT)->type);
@@ -140,7 +140,7 @@ static void test_decode_writes(void)
     TEST_ASSERT_EQUAL(-1, dpm_decode_write(DP_CMD_COUNTDOWN, DPT_VALUE, -1, &v));
     TEST_ASSERT_EQUAL(-1, dpm_decode_write(DP_CMD_COUNTDOWN, DPT_BOOL, 1, &v)); /* wrong type */
     TEST_ASSERT_EQUAL(-1, dpm_decode_write(DP_PC_STATE, DPT_ENUM, 1, &v));      /* read-only */
-    TEST_ASSERT_EQUAL(-1, dpm_decode_write(105, DPT_VALUE, 1, &v));            /* reserved */
+    TEST_ASSERT_EQUAL(-1, dpm_decode_write(115, DPT_VALUE, 1, &v));            /* unknown */
 }
 
 static void test_json_dump(void)
@@ -151,7 +151,7 @@ static void test_json_dump(void)
     dpm_set(&M, DP_AGENT_ONLINE, 1);
     dpm_set_str(&M, DP_PC_HOSTNAME, "a\"b");
     dpm_to_json(&M, b, sizeof(b));
-    TEST_ASSERT_EQUAL_STRING("{\"101\":4,\"109\":true,\"112\":\"a\\\"b\"}", b);
+    TEST_ASSERT_EQUAL_STRING("{\"101\":4,\"108\":true,\"111\":\"a\\\"b\"}", b);
     cJSON *j = cJSON_Parse(b);
     TEST_ASSERT_NOT_NULL(j);
     cJSON_Delete(j);
@@ -170,7 +170,7 @@ static void test_async_mark_keeps_newer_value_due(void)
     dpm_set_str(&M, DP_PC_HOSTNAME, "a");
     int n = dpm_collect(&M, 1000, ids, DPM_COUNT);
     TEST_ASSERT_EQUAL(2, n);
-    /* snapshot sent: 101=2, 112="a"; meanwhile both change and 114 is forced */
+    /* snapshot sent: 101=2, 111="a"; meanwhile both change and 113 is forced */
     dpm_set(&M, DP_PC_STATE, 4);
     dpm_set_str(&M, DP_PC_HOSTNAME, "b");
     dpm_mark_reported_as(&M, DP_PC_STATE, 1000, 2, NULL);

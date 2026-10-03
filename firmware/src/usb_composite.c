@@ -3,7 +3,7 @@
  * TinyUSB, CDC framing, safety nets) lives in esp_components/mesp_hal/hal_usb.c; this
  * module turns its callbacks into app events and tracks "remote wakeup armed".
  *
- * hid_not_armed (DP 115 bit 2): evaluated at each bus suspend — set when the host
+ * hid_not_armed (DP 114 bit 2): evaluated at each bus suspend — set when the host
  * suspended us WITHOUT enabling remote wakeup (wake from S3 via HID will not work),
  * cleared by a suspend with remote wakeup enabled. It is a last-known value: while the
  * PC is running the host has not decided yet.

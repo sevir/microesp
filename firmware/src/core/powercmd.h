@@ -4,7 +4,7 @@
  *   request(action) --agent offline--> result AGENT_OFFLINE
  *        | agent online
  *        v
- *   COUNTDOWN (DP 113 s, notice{action,in} sent) --cancel--> notice{cancel}, CANCELLED
+ *   COUNTDOWN (DP 112 s, notice{action,in} sent) --cancel--> notice{cancel}, CANCELLED
  *        | expires (agent still online, else AGENT_OFFLINE)
  *        v
  *   WAIT_ACK (cmd sent) --ack ok--> OK | --ack !ok / 10 s timeout--> CMD_REJECTED
@@ -19,7 +19,7 @@
 extern "C" {
 #endif
 
-/* DP 114 last_result enum order */
+/* DP 113 last_result enum order */
 typedef enum {
     LR_OK = 0,
     LR_WAKE_SENT,

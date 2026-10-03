@@ -96,5 +96,5 @@ agente (usuario teclea código C)        dongle (muestra C)
 | `tele.uptime` | 111 |
 | `hello.host` | 112 |
 | sesión `ready` y heartbeat vivo | 109 `agent_online` |
-| DP 103 / 104 tras cuenta atrás DP 113 | `cmd` shutdown / reboot |
+| DP 103 / 104 tras cuenta atrás DP 112 | `cmd` shutdown / reboot |
 | resultado de `ack` | 114 `last_result` |

@@ -2,7 +2,7 @@
  * MicroESP — BOOT button actions (US-0012). Gestures: core/button_fsm.c.
  *
  *   short          : cancel the running shutdown/reboot countdown, else next screen
- *   double         : power on the PC (wake method DP 110)
+ *   double         : power on the PC (wake method DP 109)
  *   hold 3..5 s    : agent pairing mode (code on screen, 120 s)
  *   hold 5..10 s   : provisioning window: !auth / !pid accepted on the CDC for 120 s
  *                    in release builds (cli.c, core/cli_policy.c)

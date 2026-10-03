@@ -116,23 +116,22 @@ flowchart LR
 | 102 | `power_on` | bool | rw (pulsador) | true dispara wake | dongle |
 | 103 | `power_off` | bool | rw | true → apagado con cuenta atrás | agente |
 | 104 | `reboot` | bool | rw | true → reinicio con cuenta atrás | agente |
-| 105 | — | — | — | reservado (voltaje USB descartado) | — |
-| 106 | `cpu_usage` | value | ro | 0–1000, escala 1, % | agente |
-| 107 | `mem_usage` | value | ro | 0–1000, escala 1, % | agente |
-| 108 | `disk_free` | value | ro | 0–1000, escala 1, % | agente |
-| 109 | `agent_online` | bool | ro | | dongle |
-| 110 | `wake_method` | enum | rw | hid, wol, hid_then_wol | dongle |
-| 111 | `pc_uptime` | value | ro | s | agente |
-| 112 | `pc_hostname` | string | ro | ≤64 | agente |
-| 113 | `cmd_countdown` | value | rw | 0–60 s (seguridad apagado) | dongle |
-| 114 | `last_result` | enum | ro | ok, wake_sent, wake_failed, cmd_rejected, agent_offline, cancelled | dongle |
-| 115 | `fault` | bitmap | ro | agent_lost, wake_failed, hid_not_armed, cloud_lost | dongle |
+| 105 | `cpu_usage` | value | ro | 0–1000, escala 1, % | agente |
+| 106 | `mem_usage` | value | ro | 0–1000, escala 1, % | agente |
+| 107 | `disk_free` | value | ro | 0–1000, escala 1, % | agente |
+| 108 | `agent_online` | bool | ro | | dongle |
+| 109 | `wake_method` | enum | rw | hid, wol, hid_then_wol | dongle |
+| 110 | `pc_uptime` | value | ro | s | agente |
+| 111 | `pc_hostname` | string | ro | ≤64 | agente |
+| 112 | `cmd_countdown` | value | rw | 0–60 s (seguridad apagado) | dongle |
+| 113 | `last_result` | enum | ro | ok, wake_sent, wake_failed, cmd_rejected, agent_offline, cancelled | dongle |
+| 114 | `fault` | bitmap | ro | agent_lost, wake_failed, hid_not_armed, cloud_lost | dongle |
 
 Política de reporte: telemetría cada 30 s o si cambia >2 puntos; límite TuyaOS 200 reportes/DP/60 s; usar reporte asíncrono (deduplica).
 
 ## 6. Medida de VBUS — descartada
 
-Decisión 2026-10-03: fuera de alcance. La placa no mide VBUS y requeriría soldar un divisor resistivo a un GPIO ADC1. DP 105 queda reservado; historias MESP-US-0004 y MESP-US-0019 canceladas.
+Decisión 2026-10-03: fuera de alcance. La placa no mide VBUS y requeriría soldar un divisor resistivo a un GPIO ADC1. Los DPs se numeran seguidos (la plataforma Tuya exige IDs secuenciales); historias MESP-US-0004 y MESP-US-0019 canceladas.
 
 ## 7. Protocolo agente ↔ dongle (USB CDC)
 
@@ -144,7 +143,7 @@ Decisión 2026-10-03: fuera de alcance. La placa no mide VBUS y requeriría sold
 
 ## 8. Seguridad
 
-- Apagado/reinicio: cuenta atrás visible en pantalla (DP 113, por defecto 10 s), cancelable con el botón del dongle o desde la app.
+- Apagado/reinicio: cuenta atrás visible en pantalla (DP 112, por defecto 10 s), cancelable con el botón del dongle o desde la app.
 - Agente Linux corre como servicio systemd con privilegios mínimos; apagado vía polkit rule o `CAP_SYS_BOOT` + `systemctl`, no root completo si es posible.
 - Credenciales Tuya (UUID/AuthKey) fuera del repo; inyectadas por CLI `auth` o NVS.
 - Puerto CDC accesible solo a grupo `dialout` / usuario del servicio.

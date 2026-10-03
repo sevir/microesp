@@ -66,7 +66,7 @@ typedef struct {
     uint32_t tele_count;
     last_result_t last_result;
     bool have_last_result;
-    uint32_t faults; /* DP 115 bits */
+    uint32_t faults; /* DP 114 bits */
     bool hid_not_armed;
     bool shutdown_expected;
     /* cloud */

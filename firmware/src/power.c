@@ -1,6 +1,6 @@
 /*
  * MicroESP — shutdown / reboot from the app (US-0016). Flow: core/powercmd.c.
- * DP 103/104 true -> countdown DP 113 (notice to the agent, countdown screen) ->
+ * DP 103/104 true -> countdown DP 112 (notice to the agent, countdown screen) ->
  * signed cmd -> ack -> last_result; cancel with a short button press, the DP set back
  * to false, or "!cancel". DP 103/104 are reported back to false when finished.
  */
