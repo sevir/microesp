@@ -4,7 +4,7 @@ Firmware de producción del dongle **MicroESP** (Pocket-Dongle-S3, clon de LilyG
 
 **Nube: TuyaLink** (desde 0.2.0, ADR-5 de `docs/analisis/00-analisis-arquitectura.md`). Las licencias TuyaOS (UUID/AuthKey) no se pueden conseguir, así que el firmware ya no usa el cliente `tuya_iot` de TuyaOpen: habla el protocolo abierto TuyaLink (MQTT sobre TLS) con un cliente propio sobre `esp-mqtt`. TuyaOpen se mantiene solo como marco (RTOS/`tal_*`, LVGL, compilación, tabla de particiones).
 
-Estado: fase A completa (todo salvo el pulido de la interfaz). Conectado a la nube Tuya EU con TuyaLink y verificado en placa el 2026-10-04. Pendiente de confirmar por el usuario: cableado y offsets del LCD, polaridad de la retroiluminación y tipo y pin del LED (`hw/pinout.md`).
+Estado: fase A completa (todo salvo el pulido de la interfaz). Conectado a la nube Tuya EU con TuyaLink y verificado en placa el 2026-10-04. Cableado, offsets y orientación del LCD verificados leyendo el firmware de fábrica por USB-JTAG (`hw/pinout.md`). Pendiente: tipo y pin del LED.
 
 Historias: MESP-US-0009, 0010, 0011, 0012, 0013, 0014, 0015, 0016, 0017/0018/0020 (versión básica), 0022 y 0023.
 

@@ -8,13 +8,13 @@ Spike: `hw/spikes/pinout/` (ESP-IDF v5.4). El mismo código corre también dentr
 | Función | GPIO (referencia T-Dongle-S3) | Estado | Evidencia |
 |---|---|---|---|
 | Flash 16 MB / PSRAM 8 MB octal | — | **Verificado por software** | esptool `flash-id`; log `flash 16 MB, PSRAM 8192 KB` con `SPIRAM_MODE_OCT` |
-| LCD SDA (MOSI) | 3 | Pendiente de confirmación visual | sin lectura posible (ver nota) |
-| LCD SCL | 5 | Pendiente visual | |
-| LCD CS | 4 | Pendiente visual | |
-| LCD DC | 2 | Pendiente visual | |
-| LCD RST | 1 | Pendiente visual | |
-| Retroiluminación (activa a nivel bajo) | 38 | Pendiente visual | |
-| LED RGB | candidatos WS2812 en 40/39/48/38/21, APA102 en 40/39 | Pendiente visual | |
+| LCD SDA (MOSI) | **11** (no 3) | **Verificado** (firmware de fábrica, JTAG) | `GPIO_FUNC11_OUT_SEL=103` (FSPID) |
+| LCD SCL | **10** (no 5) | **Verificado** (JTAG) | `GPIO_FUNC10_OUT_SEL=101` (FSPICLK) |
+| LCD CS | **12** (no 4) | **Verificado** (JTAG) | GPIO por software; a 0 durante las transferencias SPI |
+| LCD DC | **13** (no 2) | **Verificado** (JTAG) | a 0 solo mientras se envía el byte de comando (0x2A/0x2B/0x36…) |
+| LCD RST | **14** (no 1) | **Verificado** (JTAG) | pulso bajo de 20–60 ms al arrancar y después siempre a 1 |
+| Retroiluminación | ninguna GPIO | **Verificado** (JTAG) | el firmware de fábrica no configura ninguna otra salida (solo GPIO 10–14) ni LEDC: retroiluminación fija |
+| LED RGB | desconocido (se mantiene WS2812 en 40) | Sin verificar | el firmware de fábrica no enruta RMT ni otra salida: no usa el LED |
 | Botón BOOT | 0 | Parcial: nivel en reposo = 1 (pull-up) leído en todos los arranques; falta una pulsación real | log `BUTTON GPIO0 raw level=1` |
 | TF (SDMMC 4 bits) CLK12 CMD16 D0 14 D1 17 D2 21 D3 18 | | No verificable sin tarjeta | `sdmmc_init_ocr ... 0x107` (timeout: sin tarjeta o pines distintos) |
 
@@ -22,7 +22,17 @@ Nota LCD: se intentó verificar el cableado leyendo `RDDID`/`RDDST`/`RDDMADCTL` 
 
 Observación: en dos arranques del spike aislado GPIO0 se leyó a 0 de forma continua ~40 s (¿botón pulsado por alguien?). No se ha vuelto a reproducir; en los demás arranques lee 1 de forma estable.
 
-## Configuración de pantalla en prueba
+## Lectura del firmware de fábrica por USB-JTAG (2026-10-04)
+
+Se grabó la imagen de fábrica (`hw/factory-backup/`, Arduino-ESP32 2.0.13 + librería tipo TFT_eSPI, GIF de 160×80) y, con la demo en marcha, se leyeron registros con OpenOCD (`board/esp32s3-builtin.cfg`, sin sudo vía `sg dialout`):
+
+- Matriz GPIO (`GPIO_FUNCn_OUT_SEL_CFG`, 0x60004554+4n): solo GPIO10 = 101 (FSPICLK) y GPIO11 = 103 (FSPID); el resto 0x100 (GPIO simple). `GPIO_ENABLE` = 0x7C00 (GPIO 10–14).
+- Muestreo de `GPIO_OUT` + `SPI2_W0` (300–1500 muestras): CS=12 a 0 durante los envíos, DC=13 a 0 durante los comandos; 14 siempre a 1 tras el arranque (en el arranque: 0 y luego 1 → RST).
+- Traza de la inicialización con un *watchpoint* en `SPI2_W0` (0x60024098) desde `reset halt`: secuencia ST7735S de TFT_eSPI (`01, 11, B1–B4, C0–C5, 20, 36 C8, 3A 05, 2A, 2B, E0, E1, 13, 29`), después `21` (INVON) y `36 A8` (MY|MV|BGR, rotación 1). Ventana de dibujo: CASET 1..160, RASET 26..105 → desplazamientos columna 1 / fila 26 en horizontal. SPI2 a 40 MHz, modo 0.
+
+Configuración resultante en `firmware/include/mesp_board.h`: MOSI 11, SCLK 10, CS 12, DC 13, RST 14, sin BL (`-1`), `MADCTL=0xA8`, inversión ON, offsets 1/26.
+
+## Configuración de pantalla en prueba (spike antiguo, pines T-Dongle-S3: NO coinciden con esta placa)
 
 ST7735S 80×160 usado en horizontal (160×80): `MADCTL=0x68` (MX|MV|BGR), inversión ON (`0x21`), RGB565, desplazamiento columna 1 / fila 26 (equivale a col 26 / fila 1 en vertical, el valor típico de los paneles 0,96" en RAM 132×162). SPI2 a 26 MHz, modo 0.
 

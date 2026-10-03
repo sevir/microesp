@@ -103,7 +103,11 @@ static bool lcd_trans_done(esp_lcd_panel_io_handle_t io, esp_lcd_panel_io_event_
 void mhal_lcd_backlight(bool on)
 {
 #if MESP_LCD_ENABLE
+#if MESP_LCD_PIN_BL >= 0
     gpio_set_level(MESP_LCD_PIN_BL, MESP_LCD_BL_ACTIVE_LOW ? !on : on);
+#else
+    (void)on; /* backlight hard-wired on */
+#endif
 #endif
 }
 
@@ -115,7 +119,11 @@ int mhal_lcd_init(void)
     return -1;
 #else
     if (s_io) return 0;
+#if MESP_LCD_PIN_BL >= 0
     gpio_config_t o = {.pin_bit_mask = BIT64(MESP_LCD_PIN_RST) | BIT64(MESP_LCD_PIN_BL), .mode = GPIO_MODE_OUTPUT};
+#else
+    gpio_config_t o = {.pin_bit_mask = BIT64(MESP_LCD_PIN_RST), .mode = GPIO_MODE_OUTPUT};
+#endif
     gpio_config(&o);
     mhal_lcd_backlight(false);
     s_lcd_buf_sz = MESP_LCD_W * LCD_BUF_LINES * 2;

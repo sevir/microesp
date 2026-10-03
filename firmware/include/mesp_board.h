@@ -2,9 +2,11 @@
  * MicroESP — board pins and panel parameters for the Pocket-Dongle-S3
  * (LilyGO T-Dongle-S3 clone). SINGLE place to change them.
  *
- * Values are the T-Dongle-S3 reference ones from hw/pinout.md. The LCD wiring/offsets,
- * the backlight polarity and the LED type/pin are PENDING USER VISUAL CONFIRMATION
- * (hw/pinout.md checklist). Every value can also be overridden with -D at build time.
+ * LCD wiring, panel init, offsets and MADCTL were read from the FACTORY firmware running
+ * on this board via the built-in USB-JTAG (GPIO matrix + SPI2 register trace, 2026-10-04,
+ * see hw/pinout.md). They differ from the LilyGO T-Dongle-S3 reference. The LED type/pin
+ * is still unverified (the factory firmware does not drive any LED).
+ * Every value can also be overridden with -D at build time.
  */
 #pragma once
 
@@ -17,14 +19,16 @@
 #ifndef MESP_LCD_ENABLE
 #define MESP_LCD_ENABLE 1
 #endif
-#define MESP_LCD_PIN_MOSI 3
-#define MESP_LCD_PIN_SCLK 5
-#define MESP_LCD_PIN_CS   4
-#define MESP_LCD_PIN_DC   2
-#define MESP_LCD_PIN_RST  1
-#define MESP_LCD_PIN_BL   38
+#define MESP_LCD_PIN_MOSI 11 /* factory: FSPID via GPIO matrix */
+#define MESP_LCD_PIN_SCLK 10 /* factory: FSPICLK via GPIO matrix */
+#define MESP_LCD_PIN_CS   12 /* factory: software CS, low during transfers */
+#define MESP_LCD_PIN_DC   13 /* factory: low during command bytes */
+#define MESP_LCD_PIN_RST  14 /* factory: ~20-60 ms low pulse at boot, then high */
+#ifndef MESP_LCD_PIN_BL
+#define MESP_LCD_PIN_BL   (-1) /* none: factory never drives a backlight GPIO (hard-wired on) */
+#endif
 #ifndef MESP_LCD_BL_ACTIVE_LOW
-#define MESP_LCD_BL_ACTIVE_LOW 1
+#define MESP_LCD_BL_ACTIVE_LOW 0
 #endif
 #define MESP_LCD_W 160
 #define MESP_LCD_H 80
@@ -35,10 +39,10 @@
 #define MESP_LCD_Y_OFF 26 /* row offset in landscape (= column offset in portrait) */
 #endif
 #ifndef MESP_LCD_MADCTL
-#define MESP_LCD_MADCTL 0x68 /* MX | MV | BGR */
+#define MESP_LCD_MADCTL 0xA8 /* MY | MV | BGR: factory orientation (TFT_eSPI rotation 1) */
 #endif
 #ifndef MESP_LCD_INVERT
-#define MESP_LCD_INVERT 1
+#define MESP_LCD_INVERT 1 /* factory sends INVON (0x21) */
 #endif
 #define MESP_LCD_SPI_HZ (26 * 1000 * 1000)
 
