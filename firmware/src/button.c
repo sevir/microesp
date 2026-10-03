@@ -4,9 +4,10 @@
  *   short          : cancel the running shutdown/reboot countdown, else next screen
  *   double         : power on the PC (wake method DP 109)
  *   hold 3..5 s    : agent pairing mode (code on screen, 120 s)
- *   hold 5..10 s   : provisioning window: !auth / !pid accepted on the CDC for 120 s
+ *   hold 5..10 s   : provisioning window: !tylink / !wifi accepted on the CDC for 120 s
  *                    in release builds (cli.c, core/cli_policy.c)
- *   hold 10 s      : Tuya factory reset (unbind; reboots into BLE/AP provisioning)
+ *   hold 10..20 s  : no action since TuyaLink (there is no BLE/AP binding to reset;
+ *                    re-provision with the 5 s window instead)
  *   hold >= 20 s   : ROM download mode (handled by the HAL supervisor, works even if
  *                    the application is stuck)
  * ROM download mode is otherwise entered with "!dfu" or a 1200-baud touch on the CDC.
@@ -33,10 +34,10 @@ void button_tick(uint32_t now)
     case BTN_DOUBLE: wake_power_on("button double press"); break;
     case BTN_LONG3: pairing_start("button 3 s"); break;
     case BTN_LONG5: cli_prov_window_open(); break;
-    case BTN_LONG10: tuya_dp_factory_reset("button 10 s"); break;
+    case BTN_LONG10: app_toast("Sin accion (TuyaLink)", 3000); break;
     case BTN_HOLD_3S: app_toast("Suelta: emparejar", 2000); break;
     case BTN_HOLD_5S: app_toast("Suelta: aprovisionar", 5000); break;
-    case BTN_HOLD_10S: app_toast("Suelta: reset Tuya", 10000); break;
+    case BTN_HOLD_10S: app_toast("Suelta: nada", 10000); break;
     case BTN_HOLD_20S: app_toast("Modo descarga", 5000); break;
     default: break;
     }

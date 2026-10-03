@@ -5,10 +5,11 @@
  *
  * Access policy (core/cli_policy.c): anyone with access to the port (dialout/root)
  * can type here, so a RELEASE build (MESP_DEV_CLI=n) only accepts read-only/recovery
- * commands; !auth/!pid only while that item is not provisioned yet or within the
+ * commands; !tylink/!wifi only while that item is not provisioned yet or within the
  * 120 s provisioning window opened by holding the button 5..10 s. A development build
- * ("./build.sh dev") accepts everything. Secrets (Tuya AuthKey, agent key, pairing
- * code) are never printed.
+ * ("./build.sh dev") accepts everything. Secrets (TuyaLink deviceSecret, Wi-Fi
+ * password, agent key, pairing code) are never printed nor logged: a CLI line is
+ * logged by its command name only.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,7 +27,7 @@ static clip_window_t s_prov;
 void cli_prov_window_open(void)
 {
     clip_window_open(&s_prov, app_now_ms());
-    PR_NOTICE("provisioning window open for %d s (!auth / !pid)", CLIP_PROV_WINDOW_MS / 1000);
+    PR_NOTICE("provisioning window open for %d s (!tylink / !wifi)", CLIP_PROV_WINDOW_MS / 1000);
     app_toast("Aprovisionar 120 s", 5000);
 }
 
@@ -47,9 +48,10 @@ static void cmd_help(void)
 {
     OUT("MicroESP %s CLI, %s build (protocol lines start with '{'):\r\n", MESP_FW_VERSION, MESP_BUILD_FLAVOUR);
     OUT("  !status !version !dp !log !help !cancel\r\n");
-    OUT("  !auth <uuid> <authkey>   !pid <pid>   (Tuya credentials -> NVS, apply with !reboot)\r\n");
+    OUT("  !tylink <eu|us|cn|in> <productId> <deviceId> <deviceSecret>   (TuyaLink -> NVS, apply with !reboot)\r\n");
+    OUT("  !wifi <ssid> <password...>   (password = rest of the line, may contain spaces; apply with !reboot)\r\n");
 #if MESP_DEV
-    OUT("  !auth clear              (erase the Tuya credentials/PID stored in NVS)\r\n");
+    OUT("  !tylink clear  !wifi clear   (erase them from NVS)\r\n");
 #else
     OUT("    release: only while not provisioned, or 120 s after holding the button 5 s (now %s)\r\n",
         cli_prov_window_remaining_s() ? "OPEN" : "closed");
@@ -61,7 +63,6 @@ static void cmd_help(void)
     OUT("  !method <hid|wol|hid_then_wol>   !countdown <0..60>\r\n");
     OUT("  !cmd <shutdown|reboot> [countdown_s] [delay_s]  (simulates DP 103/104)   !cancel\r\n");
     OUT("  !key                     (harmless Left-Shift tap)\r\n");
-    OUT("  !reset-tuya              (unbind from Tuya, back to BLE/AP provisioning)\r\n");
     OUT("  !reboot !dfu !usj        (restart / ROM download mode / one boot without TinyUSB)\r\n");
 }
 
@@ -69,7 +70,7 @@ static void cmd_status(void)
 {
     uint32_t now = app_now_ms();
     link_t *l = &g_app.link;
-    OUT("fw=%s tuyaopen=%s uptime=%lus reset=%s ota_part=%s image=%s rollback=%s\r\n", MESP_FW_VERSION, OPEN_VERSION,
+    OUT("fw=%s cloud=tuyalink tuyaopen=%s uptime=%lus reset=%s ota_part=%s image=%s rollback=%s\r\n", MESP_FW_VERSION, OPEN_VERSION,
         (unsigned long)mhal_uptime_s(), mhal_reset_reason(), mhal_ota_running(), ota_status(),
         mhal_ota_rollback_enabled() ? "on" : "off");
     OUT("usb: mode=%d mounted=%d suspended=%d rwu_armed=%d cdc_open=%d kbd_leds=0x%02x events=%lu crash_count=%lu "
@@ -102,14 +103,10 @@ static void cmd_status(void)
         g_app.wake.active, (unsigned long)g_app.wake.attempts, (unsigned long)g_app.wake.successes,
         (unsigned long)g_app.wake.failures);
     OUT("pairing: active=%d remaining=%ds (code on the display only)\r\n", pairing_active(), pairing_remaining_s());
-    OUT("cli: build=%s provisioning_window=%ds tuya_creds=%s tuya_pid=%s\r\n", MESP_BUILD_FLAVOUR,
-        cli_prov_window_remaining_s(), tuya_dp_creds_provisioned() ? "stored" : "none",
-        tuya_dp_pid_provisioned() ? "stored" : "none");
-    char ip[16] = "-";
-    mhal_ip(ip);
-    OUT("tuya: pid=%s uuid=%.6s... cred_src=%s activated=%d wifi=%d ip=%s mqtt=%d dp_reports=%lu ota=%s\r\n",
-        tuya_dp_pid(), tuya_dp_uuid(), tuya_dp_cred_source(), g_app.activated, g_app.wifi_up, ip,
-        g_app.cloud_connected, (unsigned long)g_app.dpm.total_reports, g_app.ota_running ? g_app.ota_version : "-");
+    OUT("cli: build=%s provisioning_window=%ds tylink_nvs=%s wifi_nvs=%s\r\n", MESP_BUILD_FLAVOUR,
+        cli_prov_window_remaining_s(), cloud_tylink_provisioned() ? "stored" : "none",
+        cloud_wifi_provisioned() ? "stored" : "none");
+    cloud_print_status();
     OUT("heap: internal free=%lu min=%lu psram free=%lu\r\n", (unsigned long)mhal_heap_internal_free(),
         (unsigned long)mhal_heap_internal_min(), (unsigned long)mhal_psram_free());
 }
@@ -121,9 +118,51 @@ static int split(char *s, char **argv, int max)
     return n;
 }
 
+static void cmd_tylink(int argc, char **argv)
+{
+    if (argc == 2 && !strcmp(argv[1], "clear")) {
+#if MESP_DEV
+        OUT(cloud_clear_tylink() == 0 ? "ok: TuyaLink settings erased from NVS, apply with !reboot\r\n"
+                                      : "err: NVS erase failed\r\n");
+#else
+        OUT("err: !tylink clear needs a development build\r\n");
+#endif
+        return;
+    }
+    int rc = argc == 5 ? cloud_set_tylink(argv[1], argv[2], argv[3], argv[4]) : -1;
+    OUT(rc == 0    ? "ok: TuyaLink settings stored in NVS, apply with !reboot\r\n"
+        : rc == -1 ? "err: usage !tylink <eu|us|cn|in> <productId> <deviceId> <deviceSecret> (ids alphanumeric 8..32,"
+                     " secret 8..64 printable, no spaces)\r\n"
+                   : "err: NVS write failed\r\n");
+}
+
+static void cmd_wifi(const char *line, int argc, char **argv)
+{
+    if (argc == 2 && !strcmp(argv[1], "clear")) {
+#if MESP_DEV
+        OUT(cloud_clear_wifi() == 0 ? "ok: Wi-Fi settings erased from NVS, apply with !reboot\r\n"
+                                    : "err: NVS erase failed\r\n");
+#else
+        OUT("err: !wifi clear needs a development build\r\n");
+#endif
+        return;
+    }
+    char ssid[CLIP_SSID_MAX + 1], pass[CLIP_WIFI_PASS_MAX + 1];
+    int rc = clip_parse_wifi(line, ssid, pass) == 0 ? cloud_set_wifi(ssid, pass) : -1;
+    memset(pass, 0, sizeof(pass));
+    OUT(rc == 0    ? "ok: Wi-Fi settings stored in NVS, apply with !reboot\r\n"
+        : rc == -1 ? "err: usage !wifi <ssid> <password...> (SSID without spaces, 1..32 bytes; password 8..64 "
+                     "chars, may contain spaces)\r\n"
+                   : "err: NVS write failed\r\n");
+}
+
 void cli_handle(const char *line)
 {
-    char buf[160];
+    char buf[256];
+    if (strlen(line) >= sizeof(buf)) {
+        OUT("err: line too long\r\n");
+        return;
+    }
     snprintf(buf, sizeof(buf), "%s", line);
     char *argv[6];
     int argc = split(buf, argv, 6);
@@ -131,17 +170,27 @@ void cli_handle(const char *line)
     const char *c = argv[0];
     uint32_t now = app_now_ms();
     clip_ctx_t pc = {.dev = MESP_DEV,
-                     .creds_provisioned = tuya_dp_creds_provisioned(),
-                     .pid_provisioned = tuya_dp_pid_provisioned(),
+                     .tylink_provisioned = cloud_tylink_provisioned(),
+                     .wifi_provisioned = cloud_wifi_provisioned(),
                      .prov_window = clip_window_active(&s_prov, now)};
     clip_rc_t acc = clip_check(c, &pc);
     PR_NOTICE("cli: %s%s", c, acc == CLIP_ALLOW ? "" : " (refused)"); /* never log arguments (credentials) */
+    if (acc == CLIP_OBSOLETE) {
+        OUT("err: %s is not used with TuyaLink (use !tylink and !wifi)\r\n", c);
+        return;
+    }
     if (acc == CLIP_DEV_ONLY) {
         OUT("err: %s needs a development build (MESP_DEV_CLI, ./build.sh dev)\r\n", c);
         return;
     }
     if (acc == CLIP_LOCKED) {
         OUT("err: %s is locked (already provisioned): hold the button 5 s to open a 120 s provisioning window\r\n", c);
+        return;
+    }
+    if (!strcmp(c, "!tylink") || !strcmp(c, "!wifi")) {
+        if (!strcmp(c, "!tylink")) cmd_tylink(argc, argv);
+        else cmd_wifi(line, argc, argv);
+        memset(buf, 0, sizeof(buf)); /* do not leave secrets on the stack */
         return;
     }
     if (!strcmp(c, "!help")) {
@@ -154,22 +203,6 @@ void cli_handle(const char *line)
         char j[512];
         dpm_to_json(&g_app.dpm, j, sizeof(j));
         OUT("%s\r\n", j);
-    } else if (!strcmp(c, "!auth") && argc == 2 && !strcmp(argv[1], "clear")) {
-#if MESP_DEV
-        OUT(tuya_dp_clear_creds() == 0 ? "ok: Tuya UUID/AuthKey/PID erased from NVS, apply with !reboot\r\n"
-                                       : "err: NVS erase failed\r\n");
-#else
-        OUT("err: !auth clear needs a development build\r\n");
-#endif
-    } else if (!strcmp(c, "!auth")) {
-        int rc = argc == 3 ? tuya_dp_set_creds(argv[1], argv[2]) : -1;
-        memset(buf, 0, sizeof(buf)); /* do not leave the AuthKey on the stack */
-        OUT(rc == 0 ? "ok: credentials stored in NVS, apply with !reboot\r\n"
-                    : rc == -1 ? "err: usage !auth <uuid> <authkey> (alphanumeric)\r\n" : "err: NVS write failed\r\n");
-    } else if (!strcmp(c, "!pid")) {
-        int rc = argc == 2 ? tuya_dp_set_pid(argv[1]) : -1;
-        OUT(rc == 0 ? "ok: product id stored in NVS, apply with !reboot\r\n"
-                    : rc == -1 ? "err: usage !pid <pid> (alphanumeric)\r\n" : "err: NVS write failed\r\n");
     } else if (!strcmp(c, "!pair")) {
         pairing_start("cli");
         OUT("ok: agent pairing mode for %d s; the code is on the display only\r\n", pairing_remaining_s());
@@ -224,9 +257,6 @@ void cli_handle(const char *line)
                                 : sch ? "ok: scheduled cmd dropped\r\n" : "nothing to cancel\r\n");
     } else if (!strcmp(c, "!key")) {
         OUT(mhal_hid_tap(0x02, 0) == 0 ? "ok: left shift tapped\r\n" : "err: HID not ready (bus down/suspended)\r\n");
-    } else if (!strcmp(c, "!reset-tuya")) {
-        OUT("ok: Tuya reset requested\r\n");
-        tuya_dp_factory_reset("cli");
     } else {
         OUT("err: unknown command %s (try !help)\r\n", c);
     }

@@ -80,4 +80,4 @@ firmware/build.sh test            # firmware: 59 tests Unity con ASan/UBSan, sin
 
 GitHub Actions (`.github/workflows/ci.yml`) ejecuta estos jobs en cada push o PR: `agent`, `firmware-host-tests`, `firmware-build` (TuyaOpen fijado a `b80932d`, con credenciales de relleno), `secrets` (gitleaks, [`.gitleaks.toml`](.gitleaks.toml)) y `shell` (shellcheck). Una etiqueta `vX.Y.Z` (`release.yml`) publica el agente para linux-amd64, linux-arm64 y windows-amd64 y el firmware (imagen fusionada y app), junto con un `SHA256SUMS` común.
 
-**Secretos**: las credenciales de Tuya (`firmware/include/tuya_secrets.h`), la clave del agente (`*.key`) y las copias de la flash de fábrica nunca se suben al repositorio (ver [`.gitignore`](.gitignore)).
+**Secretos**: las credenciales de TuyaLink (deviceSecret) y la contraseña Wi-Fi solo se cargan en la NVS del dongle por la CLI (`!tylink`, `!wifi`); la clave del agente (`*.key`) y las copias de la flash de fábrica nunca se suben al repositorio (ver [`.gitignore`](.gitignore)).

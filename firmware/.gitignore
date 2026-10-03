@@ -2,5 +2,5 @@
 .build/
 dist/
 test/host/build/
-# Tuya credentials (template: include/tuya_secrets.h.example)
+# Legacy TuyaOS credentials header (not used since TuyaLink 0.2.0; never commit it)
 include/tuya_secrets.h

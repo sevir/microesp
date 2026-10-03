@@ -2,11 +2,13 @@
  * MicroESP firmware — application context and internal event bus.
  *
  * Threads:
- *   tuya_app_main  : TuyaOpen init + tuya_iot_yield() loop (cloud, BLE/AP netcfg, OTA)
+ *   tuya_app_main  : boot thread (TuyaOpen entry point): initialises everything, starts
+ *                    the app task and the cloud, then exits
  *   mesp_app       : the application task. Owns ALL application state; consumes the
  *                    event queue (app_post) and runs the periodic tick (20 ms).
  *   mesp_ui        : LVGL rendering from a snapshot (display.c)
- *   HAL tasks      : TinyUSB, CDC line dispatcher, safety supervisor (esp_components/mesp_hal)
+ *   HAL tasks      : TinyUSB, CDC line dispatcher, safety supervisor, mesp_cloud (Wi-Fi,
+ *                    SNTP, MQTT life cycle) + esp-mqtt (esp_components/mesp_hal)
  * Other threads never touch application state: they post events.
  */
 #pragma once
@@ -25,14 +27,12 @@ typedef enum {
     EV_LINE = 1,  /* p = malloc'd CDC line, len */
     EV_TOO_LONG,  /* CDC line > 511 bytes discarded */
     EV_USB,       /* a = mhal_usb_evt_t, b = remote wakeup armed */
-    EV_DP_WRITE,  /* a = dp id, b = dpt_t, v = value */
-    EV_CLOUD,     /* a = CLOUD_* */
+    EV_CLOUD,     /* a = mhal_cloud_ev_t, v = arg (PUBLISHED: msg id) */
+    EV_CLOUD_RX,  /* a = tyl_topic_t, p = malloc'd payload (or NULL), len, v = length (< 0: too big) */
     EV_OTA,       /* a = OTA_* , v = extra */
     EV_CDC_DTR,   /* a = DTR state (port opened / closed by the host) */
-    EV_REPORT_DONE, /* v = tuya_iot_dp_obj_report() result (report sent by the Tuya thread) */
 } app_ev_type_t;
 
-enum { CLOUD_DISCONNECTED = 0, CLOUD_CONNECTED, CLOUD_BIND_START, CLOUD_ACTIVATED, CLOUD_RESET };
 enum { OTA_NOTIFY = 0, OTA_FAULT };
 
 typedef struct {
@@ -66,11 +66,12 @@ typedef struct {
     uint32_t tele_count;
     last_result_t last_result;
     bool have_last_result;
-    uint32_t faults; /* DP 114 bits */
+    uint32_t faults; /* DP 114 (fault) bits */
     bool hid_not_armed;
     bool shutdown_expected;
     /* cloud */
-    bool cloud_connected, activated, wifi_up;
+    bool cloud_connected, wifi_up;
+    bool cloud_provisioned; /* TuyaLink + Wi-Fi settings present at boot */
     uint32_t cloud_down_since;
     bool ota_running;
     char ota_version[16];

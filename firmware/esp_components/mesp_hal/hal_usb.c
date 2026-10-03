@@ -158,6 +158,23 @@ void mhal_log_tee(const char *s)
 }
 
 static vprintf_like_t s_prev_vprintf;
+static const char *(*volatile s_log_filter)(const char *);
+
+void mhal_log_set_filter(const char *(*filter)(const char *line)) { s_log_filter = filter; }
+
+static int raw_out(const char *fmt, ...)
+{
+    va_list ap;
+    va_start(ap, fmt);
+    int n = s_prev_vprintf ? s_prev_vprintf(fmt, ap) : vprintf(fmt, ap);
+    va_end(ap);
+    return n;
+}
+
+/* ESP-IDF log lines (Wi-Fi, esp-mqtt, TLS...): redacted like the TuyaOpen/app ones
+ * (the filter matches registered secrets and sensitive keywords). A line whose text
+ * is longer than the buffer is only checked on its first 255 bytes (the buffer lives
+ * on the stack of whatever task logs, e.g. sys_evt). */
 static int tee_vprintf(const char *fmt, va_list ap)
 {
     char buf[256];
@@ -165,6 +182,12 @@ static int tee_vprintf(const char *fmt, va_list ap)
     va_copy(ap2, ap);
     vsnprintf(buf, sizeof(buf), fmt, ap2);
     va_end(ap2);
+    const char *(*f)(const char *) = s_log_filter;
+    const char *out = f ? f(buf) : buf;
+    if (out != buf) {
+        mhal_log_tee(out);
+        return raw_out("%s", out);
+    }
     mhal_log_tee(buf);
     return s_prev_vprintf ? s_prev_vprintf(fmt, ap) : vprintf(fmt, ap);
 }

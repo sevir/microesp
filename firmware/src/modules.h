@@ -7,7 +7,7 @@
 #include "app.h"
 
 /* usb_composite.c — HID+CDC device events -> app */
-void usbc_init(void); /* tuya thread, very early: starts TinyUSB + safety nets */
+void usbc_init(void); /* boot thread, very early: starts TinyUSB + safety nets */
 void usbc_on_event(const app_ev_t *ev);
 bool usbc_mounted(void);
 bool usbc_suspended(void);
@@ -48,21 +48,18 @@ bool power_cancel(const char *source);
 void power_tick(uint32_t now);
 void power_set_countdown(int s);
 
-/* tuya_dp.c — Tuya client + DP layer */
-void tuya_dp_run(void); /* tuya thread: never returns */
-void tuya_dp_on_write(const app_ev_t *ev);
-void tuya_dp_on_cloud(const app_ev_t *ev);
-void tuya_dp_tick(uint32_t now);
-void tuya_dp_on_report_done(const app_ev_t *ev);
-bool tuya_dp_creds_provisioned(void);
-bool tuya_dp_pid_provisioned(void);
-int tuya_dp_set_creds(const char *uuid, const char *authkey);
-int tuya_dp_set_pid(const char *pid);
-int tuya_dp_clear_creds(void); /* dev CLI "!auth clear" */
-void tuya_dp_factory_reset(const char *source);
-const char *tuya_dp_uuid(void);
-const char *tuya_dp_pid(void);
-const char *tuya_dp_cred_source(void);
+/* cloud.c — TuyaLink client glue (Wi-Fi + MQTT in mesp_hal/hal_cloud.c) */
+void cloud_init(void); /* boot thread, before the app task starts */
+void cloud_on_event(const app_ev_t *ev); /* EV_CLOUD */
+void cloud_on_rx(const app_ev_t *ev);    /* EV_CLOUD_RX */
+void cloud_tick(uint32_t now);
+void cloud_print_status(void);
+bool cloud_tylink_provisioned(void); /* NVS, current */
+bool cloud_wifi_provisioned(void);
+int cloud_set_tylink(const char *region, const char *pid, const char *did, const char *secret); /* 0 / -1 invalid / -2 NVS */
+int cloud_set_wifi(const char *ssid, const char *pass);
+int cloud_clear_tylink(void); /* dev CLI "!tylink clear" */
+int cloud_clear_wifi(void);   /* dev CLI "!wifi clear" */
 
 /* button.c / led.c / display.c */
 void button_init(void);
@@ -82,5 +79,5 @@ const char *ota_status(void);
 /* cli.c — "!" commands on the CDC port */
 void cli_handle(const char *line);
 void cli_tick(uint32_t now);
-void cli_prov_window_open(void); /* physical gesture (button 5 s): !auth/!pid for 120 s */
+void cli_prov_window_open(void); /* physical gesture (button 5 s): !tylink/!wifi for 120 s */
 int cli_prov_window_remaining_s(void);

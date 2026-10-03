@@ -2,7 +2,8 @@
 # Reproduce docs/dev-setup.md sin interacción y sin credenciales reales:
 #   TuyaOpen fijado al commit b80932d, ./export.sh (uv + Python 3.12), tos.py check,
 #   board POCKET_DONGLE_S3 (firmware/install-board.sh, lo llama build.sh), esp-sr ==2.4.7
-#   (firmware/esp_components/mesp_hal/idf_component.yml) y tuya_secrets.h de relleno.
+#   (firmware/esp_components/mesp_hal/idf_component.yml). Sin credenciales: TuyaLink y la
+#   Wi-Fi se cargan en la NVS del dongle por la CLI (!tylink, !wifi).
 name: firmware-build
 
 on:
@@ -82,9 +83,6 @@ jobs:
           if [ -f "$lock" ] && [ "$(awk '/^  espressif\/esp-sr:/{f=1;next} f&&/^  [^ ]/{f=0} f&&/^    version:/{gsub(/["\x27]/,"",$2);print $2}' "$lock")" != "2.4.7" ]; then
             echo "dependencies.lock con otra esp-sr: se borra"; rm -f "$lock"
           fi
-
-      - name: Credenciales de relleno (sin secretos)
-        run: cp firmware/include/tuya_secrets.h.example firmware/include/tuya_secrets.h
 
       - name: Compilar
         run: firmware/build.sh

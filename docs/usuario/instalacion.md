@@ -1,13 +1,13 @@
 # Guía de instalación de MicroESP
 
-Historia: MESP-US-0034. Pasos de principio a fin para dejar funcionando un dongle MicroESP con el PC: flashear el firmware, cargar las credenciales de Tuya, emparejar con Smart Life, instalar el agente, emparejar el agente con el dongle y verificar el conjunto.
+Historia: MESP-US-0034. Pasos de principio a fin para dejar funcionando un dongle MicroESP con el PC: flashear el firmware, cargar las credenciales de TuyaLink y la Wi-Fi, comprobar que aparece en Smart Life, instalar el agente, emparejar el agente con el dongle y verificar el conjunto.
 
 Necesitas:
 
 - El dongle Pocket-Dongle-S3 (ESP32-S3 con 16 MB de flash, pantalla ST7735).
 - El PC destino con Linux y systemd (probado en Pop!_OS / Ubuntu 24.04). Windows es opcional: ver [`agent/README.md`](../../agent/README.md#windows-opcional).
-- Una cuenta en la app **Smart Life** (o Tuya Smart) y Wi-Fi de **2,4 GHz**.
-- Las credenciales de Tuya del producto MicroESP: **PID** del producto y una licencia TuyaOpen (**UUID** + **AuthKey**). Son secretas: no las publiques ni las subas al repositorio.
+- Una cuenta en la app **Smart Life** (o Tuya Smart) y Wi-Fi de **2,4 GHz** (con contraseña; el SSID no puede tener espacios).
+- Las credenciales **TuyaLink** del dispositivo, que da la plataforma Tuya (platform.tuya.com) al crearlo en el producto MicroESP: **región** (`eu`, `us`, `cn` o `in`), **productId**, **deviceId** y **deviceSecret**. El dispositivo se vincula a tu cuenta de la app desde la plataforma. El deviceSecret es secreto: no lo publiques ni lo subas al repositorio. (Desde la versión 0.2.0 ya no hacen falta licencias TuyaOS UUID/AuthKey.)
 - Acceso de administrador (`sudo`) en el PC.
 
 > Si compilas desde el código fuente, prepara antes el entorno con [`docs/dev-setup.md`](../dev-setup.md).
@@ -47,34 +47,41 @@ Desenchufa el dongle y vuelve a enchufarlo.
 
 ```bash
 cd firmware
-cp include/tuya_secrets.h.example include/tuya_secrets.h   # opcional: credenciales en compilación (§2)
 ./build.sh
 sg dialout -c tools/flash.sh      # sin pulsar BOOT si ya corre MicroESP; si no, BOOT al enchufar
 ```
 
 **Comprobación:** `lsusb | grep 303a:4002` muestra el dispositivo `MicroESP`, y aparece `/dev/serial/by-id/usb-MicroESP_MicroESP_MESP-*-if01`. La pantalla muestra el estado y el LED parpadea en azul porque el dongle aún no está aprovisionado.
 
-## 2. Cargar las credenciales de Tuya
+## 2. Cargar las credenciales de TuyaLink y la Wi-Fi
 
-Prioridad: **NVS** (CLI) > almacén de licencias de TuyaOpen > `include/tuya_secrets.h` > valores de relleno. Con los valores de relleno el dongle arranca, pero no llega a la nube.
-
-La forma recomendada es por la CLI del puerto CDC. Las credenciales se guardan en NVS y no quedan en ningún fichero:
+Se cargan por la CLI del puerto CDC y se guardan en NVS (no quedan en ningún fichero). Flashear de nuevo no las borra. Si el agente ya está instalado, páralo antes (`sudo systemctl stop microesp-agent`), porque abre el puerto en exclusiva.
 
 ```bash
 source /www/MicroESP/tools/idf-env.sh        # o cualquier Python con pyserial
-sg dialout -c "python firmware/tools/mesp_cdc.py '!auth <uuid> <authkey>' '!pid <pid>' '!reboot'"
+sg dialout -c "python firmware/tools/mesp_cdc.py '!tylink <región> <productId> <deviceId> <deviceSecret>'"
+sg dialout -c "python firmware/tools/mesp_cdc.py '!wifi <ssid> <contraseña>' '!reboot'"
 ```
 
-Si el agente ya está instalado, páralo antes (`sudo systemctl stop microesp-agent`), porque abre el puerto en exclusiva. Para comprobar las credenciales, ejecuta `mesp_cdc.py '!status'`: la línea de Tuya debe mostrar el PID cargado.
+- La contraseña Wi-Fi es **el resto de la línea** tras el SSID: puede llevar espacios.
+- Para que el secreto no quede en el historial de la shell, puedes escribir los comandos en un terminal serie (`python -m serial.tools.miniterm /dev/serial/by-id/usb-MicroESP_*-if01`) en lugar de pasarlos como argumentos.
+- En la versión release, `!tylink` y `!wifi` solo se aceptan la primera vez (dato aún no guardado). Para cambiarlos después, **mantén el botón entre 5 y 10 s y suéltalo**: se abre una ventana de 120 s ("Aprovisionar 120 s" en pantalla).
+- El dongle nunca muestra el deviceSecret ni la contraseña: ni en `!status` ni en el log.
 
-## 3. Emparejar con Smart Life
+**Comprobación** (unos 10 s después del reinicio): `mesp_cdc.py '!status'` muestra
 
-1. Activa el Bluetooth y la ubicación del móvil, y conéctalo a la Wi-Fi de 2,4 GHz.
-2. En Smart Life: **+** → **Añadir dispositivo**. El dongle se anuncia por **BLE** (con **AP** como respaldo) mientras el LED parpadea en azul.
-3. Introduce la contraseña de la Wi-Fi y espera a que se complete el emparejado.
-4. Si no aparece: mantén pulsado el botón del dongle **10 s** y suéltalo (reset de Tuya, vuelve al modo BLE/AP), o ejecuta `!reset-tuya` por la CLI.
+```
+tylink: region=eu host=m1.tuyaeu.com product=<productId> device=26e0...0z provisioned=1 mqtt=connected ...
+wifi: ssid=<ssid> configured=1 up=1 ip=192.168.x.y rssi=-58 ... time_synced=1
+```
 
-**Comprobación:** en la app aparece el dispositivo con `pc_state` (DP 101) y el resto de DPs.
+El LED deja de parpadear en azul y el icono de nube de la pantalla aparece sin tachar.
+
+## 3. Comprobar el dispositivo en Smart Life
+
+Con TuyaLink **no hay emparejado BLE/AP**: el dispositivo ya está vinculado a tu cuenta desde la plataforma Tuya. En cuanto conecta aparece en línea en la app con `pc_state` y el resto de propiedades. Si no aparece, revisa en la plataforma que el dispositivo esté vinculado a la cuenta de la app.
+
+Solo puede haber **una conexión por deviceId**: si otro programa usa las mismas credenciales (por ejemplo el script de pruebas `hw/spikes/tylink_test.py`), la nube desconecta al dongle, que reintenta solo.
 
 ## 4. Instalar el agente en el PC
 
@@ -130,8 +137,8 @@ Cuando todo funcione, vuelve a poner `dry_run = false`. El plan de pruebas compl
 | `esptool` no conecta | El dongle no está en modo descarga. Mantén BOOT pulsado al enchufar. No uses `--before no_reset`. |
 | `permission denied` en `/dev/ttyACM*` | El usuario no está en `dialout`, o no se ha aplicado la regla udev: `sudo udevadm trigger` o `sg dialout -c ...`. |
 | `device or resource busy` | El agente tiene el puerto abierto: `sudo systemctl stop microesp-agent`. |
-| El dongle no aparece en Smart Life | Wi-Fi de 5 GHz, Bluetooth o ubicación desactivados, o credenciales de relleno (`!status`). Haz el reset de Tuya (botón 10 s) y repite. |
-| `cloud_lost` (bit 3 del DP 114) o iconos de nube tachados | No hay Wi-Fi o MQTT. Revisa la cobertura y que la licencia (UUID/AuthKey) sea válida. |
+| El dongle no aparece en Smart Life | Mira `!status`. `wifi: ... up=0`: SSID o contraseña incorrectos, o red de 5 GHz (`last_reason` da el motivo de Wi-Fi). `time_synced=0`: la red bloquea NTP. `mqtt=connecting` con `last_err=4` o `5` (código CONNACK): credenciales TuyaLink rechazadas (repite `!tylink` con la ventana del botón de 5 s). `last_err=-1`: no hay conexión TLS con el broker (cortafuegos, puerto 8883). Si todo está `connected`, revisa en la plataforma que el dispositivo esté vinculado a tu cuenta. |
+| `cloud_lost` (bit 3 del DP 114), LED rojo o iconos de nube tachados | 60 s sin sesión MQTT: igual que la fila anterior. También ocurre si otro cliente usa el mismo deviceId. |
 | `dongle error: not_paired` / `welcome signature invalid` | Vuelve a emparejar (§5). La clave anterior se sustituye en los dos lados. |
 | `agent_offline` al apagar | El agente no está conectado: `systemctl status microesp-agent`. |
 | `cmd_rejected` | El agente rechazó o no confirmó la orden en 10 s. Revisa en `journalctl -u microesp-agent` si hay `bad_sig`/`replay`. |

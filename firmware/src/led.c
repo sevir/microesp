@@ -4,7 +4,7 @@
  * Priority (first match):
  *   countdown running            -> red, fast blink (4 Hz)
  *   wake sent (in progress)      -> white pulse (breathing)
- *   agent pairing / Tuya not provisioned -> blue blink (1 Hz)
+ *   agent pairing / cloud not provisioned (!tylink / !wifi) -> blue blink (1 Hz)
  *   error (fault bits except hid_not_armed) -> red steady
  *   PC on + agent                -> green
  *   PC on without agent / booting -> amber (booting blinks)
@@ -35,7 +35,7 @@ void led_tick(uint32_t now)
         r = blink4 ? 255 : 0;
     } else if (g_app.wake.active) {
         r = g = b = breath;
-    } else if (pairing_active() || !g_app.activated) {
+    } else if (pairing_active() || !g_app.cloud_provisioned) {
         b = blink1 ? 255 : 0;
     } else if (g_app.faults & ~FAULT_HID_NOT_ARMED) {
         r = 255;

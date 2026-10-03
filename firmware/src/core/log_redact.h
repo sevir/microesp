@@ -3,7 +3,8 @@
  *
  * Every TuyaOpen/app log line goes to UART0 and to the RAM ring dumped by "!log" on
  * the CDC port. A line is replaced by a fixed marker when it contains a registered
- * secret (Tuya AuthKey, the agent pairing code) or a sensitive keyword (TuyaOpen's
+ * secret (TuyaLink deviceSecret and MQTT password, Wi-Fi password, the agent
+ * pairing code) or a sensitive keyword (TuyaOpen's
  * debug logs can print activation payloads, tokens or keys). Matching is
  * case-insensitive for keywords and exact for secrets.
  *
@@ -23,7 +24,7 @@ extern "C" {
 #define LR_SECRET_MAX 64
 #define LR_SECRET_MIN 6 /* shorter strings are never registered (false positives) */
 
-enum { LR_SLOT_TUYA_AUTHKEY = 0, LR_SLOT_PAIR_CODE = 1 };
+enum { LR_SLOT_TYLINK_SECRET = 0, LR_SLOT_PAIR_CODE = 1, LR_SLOT_WIFI_PASS = 2, LR_SLOT_MQTT_PASS = 3 };
 
 #define LR_REDACTED "[redacted: sensitive log line]\n"
 

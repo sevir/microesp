@@ -28,7 +28,7 @@
 
 typedef struct {
     int pc_state;
-    bool agent, cloud, wifi, activated, ota;
+    bool agent, cloud, wifi, provisioned, ota;
     char host[24];
     int cpu, mem, disk;
     int countdown;
@@ -67,7 +67,7 @@ void display_tick(uint32_t now)
     s.agent = link_online(&g_app.link);
     s.cloud = g_app.cloud_connected;
     s.wifi = g_app.wifi_up;
-    s.activated = g_app.activated;
+    s.provisioned = g_app.cloud_provisioned;
     s.ota = g_app.ota_running;
     snprintf(s.host, sizeof(s.host), "%.23s", g_app.hostname[0] ? g_app.hostname : "-");
     s.cpu = g_app.cpu;
@@ -205,7 +205,7 @@ static void apply(const ui_snap_t *s)
         else lv_obj_add_flag(s_scr[i], LV_OBJ_FLAG_HIDDEN);
     }
     lv_label_set_text(l_state, state_text(s->pc_state));
-    lv_label_set_text(l_host, s->activated ? s->host : "Tuya: emparejar (BLE)");
+    lv_label_set_text(l_host, s->provisioned ? s->host : "Nube: !wifi/!tylink");
     snprintf(b, sizeof(b), LV_SYMBOL_WIFI "%s " LV_SYMBOL_UPLOAD "%s " LV_SYMBOL_USB "%s", s->wifi ? "" : "x",
              s->cloud ? "" : "x", s->agent ? "" : "x");
     lv_label_set_text(l_icons, b);

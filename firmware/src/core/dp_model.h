@@ -1,7 +1,8 @@
 /*
  * MicroESP — typed Tuya DP table (docs/analisis/00-analisis-arquitectura.md §5) with
  * change thresholds and throttling, plus validation of DPs received from the cloud.
- * Pure C, host-tested; src/tuya_dp.c maps it onto tuya_iot_dp_obj_report().
+ * Pure C, host-tested; core/tylink.c maps it onto TuyaLink property codes/JSON (the
+ * numeric ids are the Tuya abilityIds, kept as the internal key and in the docs).
  * Machine-readable description: firmware/schema/dp.json (keep in sync).
  */
 #pragma once
@@ -89,6 +90,13 @@ void dpm_mark_reported(dp_model_t *m, uint8_t id, uint32_t now_ms);
  * non-string DPs. Unlike dpm_mark_reported() it does not clear the force flag (the
  * caller clears it when it takes the snapshot). */
 void dpm_mark_reported_as(dp_model_t *m, uint8_t id, uint32_t now_ms, int32_t v, const char *s);
+
+/* Enum DPs: value <-> name (TuyaLink sends/receives enums as strings). NULL / -1 if
+ * the DP is not an enum or the value/name is unknown. */
+const char *dpm_enum_name(uint8_t id, int32_t v);
+int dpm_enum_parse(uint8_t id, const char *name);
+/* DP by TuyaLink property code, NULL if unknown. */
+const dpm_desc_t *dpm_desc_by_code(const char *code);
 
 /* Validate a DP written from the cloud. Returns 0 and the normalised value, or -1. */
 int dpm_decode_write(uint8_t id, dpt_t type, int32_t raw, int32_t *out);

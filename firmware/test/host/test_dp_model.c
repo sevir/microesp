@@ -58,7 +58,11 @@ static void test_schema_json_in_sync(void)
         TEST_ASSERT_EQUAL_STRING(types[x->type], cJSON_GetObjectItem(d, "type")->valuestring);
         TEST_ASSERT_EQUAL(x->writable, !strcmp(cJSON_GetObjectItem(d, "mode")->valuestring, "rw"));
         cJSON *r = cJSON_GetObjectItem(d, "range");
-        if (x->type == DPT_ENUM) TEST_ASSERT_EQUAL(x->max + 1, cJSON_GetArraySize(r));
+        if (x->type == DPT_ENUM) {
+            TEST_ASSERT_EQUAL(x->max + 1, cJSON_GetArraySize(r));
+            for (int k = 0; k <= x->max; k++) /* TuyaLink sends these names */
+                TEST_ASSERT_EQUAL_STRING(cJSON_GetArrayItem(r, k)->valuestring, dpm_enum_name(x->id, k));
+        }
         if (x->type == DPT_BITMAP) TEST_ASSERT_EQUAL(4, cJSON_GetArraySize(cJSON_GetObjectItem(d, "label")));
         if (x->type == DPT_VALUE) {
             TEST_ASSERT_EQUAL(x->min, cJSON_GetObjectItem(d, "min")->valueint);

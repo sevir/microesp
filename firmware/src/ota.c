@@ -1,14 +1,16 @@
 /*
  * MicroESP — OTA (US-0011).
  *
- * TuyaOpen downloads and writes the image itself after TUYA_EVENT_UPGRADE_NOTIFY
- * (tal_ota -> esp_ota on the inactive slot of the dual 7.4 MB OTA table) and reboots.
+ * Cloud OTA: NOT available since the switch to TuyaLink (0.2.0): TuyaOpen's tuya_iot
+ * client handled TUYA_EVENT_UPGRADE_NOTIFY; the TuyaLink OTA topics are not
+ * implemented yet (EV_OTA is kept for that). Updates go over USB (tools/flash.sh).
+ * The dual 7.4 MB OTA table and the rollback check below stay in place.
  * App rollback is enabled in the bootloader (sdkconfig.microesp:
  * CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE). A new image boots as PENDING_VERIFY; this
  * module marks it valid after a health check:
- *     >= 30 s up AND cloud MQTT connected            (device activated in Tuya)
- *     >= 30 s up AND (cloud connected OR USB mounted) (not activated: serial/dev flash)
- * An activated device received the image from the cloud, so the new image must prove
+ *     >= 30 s up AND cloud MQTT connected            (cloud provisioned)
+ *     >= 30 s up AND (cloud connected OR USB mounted) (not provisioned: serial/dev flash)
+ * A provisioned device would receive images from the cloud, so the new image must prove
  * it can reach the cloud again (and thus receive the next OTA); USB alone is not
  * enough there.
  * If the check does not pass within 10 min, it restarts without marking: the
@@ -59,7 +61,7 @@ void ota_tick(uint32_t now)
 {
     if (!s_pending) return;
     uint32_t up = now - g_app.boot_ms;
-    bool healthy = g_app.cloud_connected || (!g_app.activated && usbc_mounted());
+    bool healthy = g_app.cloud_connected || (!g_app.cloud_provisioned && usbc_mounted());
     if (up >= HEALTH_MIN_UP_MS && healthy) {
         s_pending = false;
         int rc = mhal_ota_mark_valid();

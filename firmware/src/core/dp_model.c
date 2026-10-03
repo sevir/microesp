@@ -25,6 +25,45 @@ static const dpm_desc_t k_dps[DPM_COUNT] = {
     {DP_FAULT, "fault", DPT_BITMAP, false, 0, 0x0f, 0, 1000, 0},
 };
 
+/* Enum ranges, same order as pcs_t / wake_method_t / last_result_t (checked by the
+ * host tests against pcs_name(), wake_method_name(), lr_name() and schema/dp.json). */
+static const char *const k_pc_state[] = {"off", "sleep", "booting", "on_no_agent", "on", "unknown"};
+static const char *const k_wake[] = {"hid", "wol", "hid_then_wol"};
+static const char *const k_last[] = {"ok", "wake_sent", "wake_failed", "cmd_rejected", "agent_offline", "cancelled"};
+
+static const char *const *enum_table(uint8_t id, int *n)
+{
+    switch (id) {
+    case DP_PC_STATE: *n = 6; return k_pc_state;
+    case DP_WAKE_METHOD: *n = 3; return k_wake;
+    case DP_LAST_RESULT: *n = 6; return k_last;
+    default: *n = 0; return NULL;
+    }
+}
+
+const char *dpm_enum_name(uint8_t id, int32_t v)
+{
+    int n;
+    const char *const *t = enum_table(id, &n);
+    return t && v >= 0 && v < n ? t[v] : NULL;
+}
+
+int dpm_enum_parse(uint8_t id, const char *name)
+{
+    int n;
+    const char *const *t = enum_table(id, &n);
+    for (int i = 0; t && name && i < n; i++)
+        if (!strcmp(name, t[i])) return i;
+    return -1;
+}
+
+const dpm_desc_t *dpm_desc_by_code(const char *code)
+{
+    for (int i = 0; code && i < DPM_COUNT; i++)
+        if (!strcmp(code, k_dps[i].code)) return &k_dps[i];
+    return NULL;
+}
+
 const dpm_desc_t *dpm_desc_at(int idx) { return idx >= 0 && idx < DPM_COUNT ? &k_dps[idx] : NULL; }
 
 int dpm_index(uint8_t id)

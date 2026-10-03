@@ -1,11 +1,36 @@
 {
   "product": "MicroESP",
-  "doc": "Custom Tuya product DPs (docs/analisis/00-analisis-arquitectura.md section 5). IDs are sequential as assigned by the Tuya platform (USB voltage dropped, no gap). Must stay in sync with src/core/dp_model.c (checked by test/host).",
+  "doc": "MicroESP thing model (docs/analisis/00-analisis-arquitectura.md section 5). Cloud protocol: TuyaLink (ADR-5). 'code' is the TuyaLink property code used on the wire; 'id' is the Tuya abilityId (sequential, as assigned by the platform; kept as the firmware's internal key and in the docs). Must stay in sync with src/core/dp_model.c (checked by test/host).",
+  "tuyalink": {
+    "topics": {
+      "publish": [
+        "tylink/<deviceId>/thing/property/report",
+        "tylink/<deviceId>/thing/property/set_response",
+        "tylink/<deviceId>/thing/action/execute_response",
+        "tylink/<deviceId>/thing/model/get"
+      ],
+      "subscribe": [
+        "tylink/<deviceId>/thing/property/set",
+        "tylink/<deviceId>/thing/action/execute",
+        "tylink/<deviceId>/thing/model/get_response",
+        "tylink/<deviceId>/thing/property/report_response"
+      ]
+    },
+    "report": "{\"msgId\":\"<=32 chars\",\"time\":<unix ms>,\"data\":{\"<code>\":{\"value\":V,\"time\":<unix ms>}}}",
+    "set": "{\"msgId\":..,\"time\":..,\"data\":{\"<code>\":V,...}} -> property/set_response {\"msgId\":<same>,\"time\":<ms>,\"code\":0|1}",
+    "encoding": {
+      "bool": "JSON true/false",
+      "value": "JSON integer (raw, scale applied by the app)",
+      "enum": "JSON string from range",
+      "bitmap": "JSON integer bit mask (bit i = label[i])",
+      "string": "JSON string"
+    }
+  },
   "report_policy": {
-    "mode": "async: change thresholds + per-DP throttle; every DP force-reported on MQTT connect",
-    "telemetry": "106/107/108: change >= 20 tenths (min 5 s apart) or any change every 30 s",
-    "pc_uptime": "111: at most once per 60 s",
-    "rate_limit": "every DP min interval >= 300 ms (Tuya limit 200 reports/DP/60 s)"
+    "mode": "async from the app task: change thresholds + per-DP throttle; QoS 1, done on PUBACK; every DP force-reported on each MQTT connection",
+    "telemetry": "105/106/107 (cpu_usage, mem_usage, disk_free): change >= 20 tenths (min 5 s apart) or any change every 30 s",
+    "pc_uptime": "110: at most once per 60 s",
+    "rate_limit": "every DP min interval >= 300 ms (<= 200 reports/DP/60 s)"
   },
   "dps": [
     {

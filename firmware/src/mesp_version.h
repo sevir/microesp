@@ -1,7 +1,7 @@
 /*
  * Firmware version: the single source is CONFIG_PROJECT_VERSION in
  * firmware/app_default.config (TuyaOpen generates PROJECT_VERSION in tuya_kconfig.h).
- * It is reported to Tuya (OTA), in the cdc-v1 welcome "fw" field, on screen and by !version.
+ * It is used in the cdc-v1 welcome "fw" field, on screen, in !version and in the boot log.
  */
 #pragma once
 #include "tuya_kconfig.h"

@@ -90,11 +90,13 @@ agente (usuario teclea código C)        dongle (muestra C)
 
 ## 5. Mapeo a DPs Tuya (dongle)
 
+Número = `abilityId`; en la nube (TuyaLink) cada DP viaja por su código de propiedad (`firmware/schema/dp.json`).
+
 | Mensaje | DP |
 |---|---|
-| `tele.cpu` / `mem` / `disk_free` | 106 / 107 / 108 (value, escala 1) |
-| `tele.uptime` | 111 |
-| `hello.host` | 112 |
-| sesión `ready` y heartbeat vivo | 109 `agent_online` |
-| DP 103 / 104 tras cuenta atrás DP 112 | `cmd` shutdown / reboot |
-| resultado de `ack` | 114 `last_result` |
+| `tele.cpu` / `mem` / `disk_free` | 105 `cpu_usage` / 106 `mem_usage` / 107 `disk_free` (value, escala 1) |
+| `tele.uptime` | 110 `pc_uptime` |
+| `hello.host` | 111 `pc_hostname` |
+| sesión `ready` y heartbeat vivo | 108 `agent_online` |
+| DP 103 `power_off` / 104 `reboot` tras la cuenta atrás del DP 112 `cmd_countdown` | `cmd` shutdown / reboot |
+| resultado de `ack` | 113 `last_result` |

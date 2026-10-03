@@ -27,8 +27,8 @@ Historia: MESP-US-0033. Criterio de aceptación: todos los casos ejecutados, con
 | Caso | Pasos | Esperado | Resultado | Evidencia |
 |---|---|---|---|---|
 | E2E-01 Flasheo inicial | Flashear la imagen fusionada ([instalación §1](../usuario/instalacion.md#1-flashear-el-firmware)); desenchufar y enchufar | Enumera como `303a:4002` «MicroESP»; la pantalla muestra el estado; el LED parpadea en azul | | |
-| E2E-02 Credenciales Tuya | `!auth`, `!pid`, `!reboot`; `!status` | `tuya: pid=<pid> cred_src=nvs`; sin errores | | |
-| E2E-03 Emparejado Smart Life | Añadir dispositivo en la app (BLE) | El dispositivo aparece, `activated=1`, `mqtt=1`; DPs 101–115 visibles | | |
+| E2E-02 Credenciales TuyaLink y Wi-Fi | `!tylink <región> <productId> <deviceId> <deviceSecret>`, `!wifi <ssid> <contraseña>`, `!reboot`; `!status` | `tylink: ... provisioned=1 mqtt=connected`, `wifi: ... up=1 ... time_synced=1`; sin secretos en `!status` ni en `!log` | | |
+| E2E-03 Dispositivo en Smart Life | Abrir la app (vinculado desde la plataforma; sin BLE) | El dispositivo aparece en línea; propiedades `pc_state` … `fault` visibles | | |
 | E2E-04 Instalación del agente | `sudo agent/deploy/install.sh` | Servicio activo; `/dev/microesp` existe; `power/wakeup=enabled` en el dongle | | |
 | E2E-05 Emparejado agente ↔ dongle | Botón 3 s → código; `sudo microesp-agent pair` | `pair_ok`; existe `/etc/microesp/agent.key` (0600, `microesp`); tras arrancar el servicio, `agent_online=true`, `pc_state=on` | | |
 | E2E-06 Emparejado con código erróneo | 3 códigos incorrectos | El dongle sale del modo de emparejado; la clave anterior no cambia | | |

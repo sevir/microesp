@@ -17,7 +17,7 @@
 
 app_t g_app;
 static QUEUE_HANDLE s_q;
-static THREAD_HANDLE s_app_thread, s_tuya_thread;
+static THREAD_HANDLE s_app_thread, s_boot_thread;
 
 uint32_t app_now_ms(void) { return (uint32_t)tal_system_get_millisecond(); }
 
@@ -67,10 +67,9 @@ static void dispatch(app_ev_t *ev, uint32_t now)
     }
     case EV_TOO_LONG: agent_link_on_too_long(now); break;
     case EV_USB: usbc_on_event(ev); break;
-    case EV_DP_WRITE: tuya_dp_on_write(ev); break;
-    case EV_CLOUD: tuya_dp_on_cloud(ev); break;
+    case EV_CLOUD: cloud_on_event(ev); break;
+    case EV_CLOUD_RX: cloud_on_rx(ev); break;
     case EV_OTA: ota_on_event(ev); break;
-    case EV_REPORT_DONE: tuya_dp_on_report_done(ev); break;
     case EV_CDC_DTR:
         PR_NOTICE("cdc: port %s by the host", ev->a ? "opened" : "closed");
         if (!ev->a) agent_link_on_port_closed();
@@ -97,7 +96,7 @@ static void app_task(void *arg)
         power_tick(now);
         wake_mod_tick(now);
         state_tick(now);
-        tuya_dp_tick(now);
+        cloud_tick(now);
         ota_tick(now);
         cli_tick(now);
         led_tick(now);
@@ -109,9 +108,10 @@ static void user_main(void)
 {
     cJSON_InitHooks(&(cJSON_Hooks){.malloc_fn = tal_malloc, .free_fn = tal_free});
     mhal_log_init();
-    /* Release: NOTICE (TuyaOpen's DEBUG/INFO logs include activation payloads and
-     * keys). Development: DEBUG. Redaction applies to both. */
+    /* Release: NOTICE. Development: DEBUG. Redaction applies to both, and also to the
+     * ESP-IDF log lines (Wi-Fi, esp-mqtt, TLS) through the HAL tee. */
     tal_log_init(MESP_DEV ? TAL_LOG_LEVEL_DEBUG : TAL_LOG_LEVEL_NOTICE, 1024, (TAL_LOG_OUTPUT_CB)log_output);
+    mhal_log_set_filter(lr_filter);
 
     /* USB first: the safety nets (download mode, USJ fallback) must exist even if
      * something below fails. */
@@ -141,22 +141,23 @@ static void user_main(void)
     led_init();
     ota_init();
     display_init();
+    cloud_init(); /* starts the HAL cloud task (Wi-Fi, SNTP, TuyaLink MQTT) if provisioned */
 
     THREAD_CFG_T cfg = {.stackDepth = 8192, .priority = THREAD_PRIO_2, .thrdname = "mesp_app"};
     tal_thread_create_and_start(&s_app_thread, NULL, NULL, app_task, NULL, &cfg);
-
-    tuya_dp_run(); /* never returns */
+    /* the boot thread ends here: TuyaOpen is only the OS/LVGL framework now (no tuya_iot) */
 }
 
-static void tuya_app_thread(void *arg)
+static void boot_thread(void *arg)
 {
     user_main();
-    tal_thread_delete(s_tuya_thread);
-    s_tuya_thread = NULL;
+    tal_thread_delete(s_boot_thread);
+    s_boot_thread = NULL;
 }
 
+/* TuyaOpen platform entry point (platform main.c -> tuya_app_main) */
 void tuya_app_main(void)
 {
     THREAD_CFG_T cfg = {.stackDepth = 6 * 1024, .priority = THREAD_PRIO_1, .thrdname = "tuya_app_main"};
-    tal_thread_create_and_start(&s_tuya_thread, NULL, NULL, tuya_app_thread, NULL, &cfg);
+    tal_thread_create_and_start(&s_boot_thread, NULL, NULL, boot_thread, NULL, &cfg);
 }

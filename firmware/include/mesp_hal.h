@@ -65,6 +65,9 @@ void mhal_app_alive(void);
 /* RAM log ring (dumped by "!log") */
 void mhal_log_tee(const char *s);
 void mhal_log_init(void);
+/* Redaction filter for ESP-IDF log lines (esp_log: Wi-Fi, esp-mqtt, TLS...): returns
+ * the line or a replacement marker. Applied to the RAM ring AND to UART0. */
+void mhal_log_set_filter(const char *(*filter)(const char *line));
 
 /* ------------------------------------------------------------------ system */
 void mhal_random(void *buf, size_t n);
@@ -113,6 +116,60 @@ void mhal_lcd_backlight(bool on);
 int mhal_wol_send(const uint8_t *pkt, size_t len);
 /* Station IPv4 as text, false if none */
 bool mhal_ip(char out[16]);
+
+/* ------------------------------------------------------------------ cloud (hal_cloud.c)
+ * Wi-Fi station + SNTP + one MQTT-over-TLS client (esp-mqtt, server certificate
+ * checked against the ESP-IDF CA bundle). A HAL task ("mesp_cloud") owns the
+ * connection: waits for an IP and a valid clock, asks the application for the
+ * username/password of each attempt (TuyaLink signs them with the current time),
+ * connects, subscribes, and reconnects with back-off 2, 4, 8, 16, 32 s then every
+ * 120 s (the counter restarts after a connection that lasted >= 60 s). */
+typedef enum {
+    MHAL_CLOUD_WIFI_UP = 0,   /* got an IPv4 address */
+    MHAL_CLOUD_WIFI_DOWN,
+    MHAL_CLOUD_TIME_SYNC,     /* clock set by SNTP */
+    MHAL_CLOUD_CONNECTED,     /* MQTT session up and subscriptions sent */
+    MHAL_CLOUD_DISCONNECTED,  /* MQTT session lost / attempt failed (arg: connack code or -1) */
+    MHAL_CLOUD_PUBLISHED,     /* PUBACK received (arg: msg id) */
+} mhal_cloud_ev_t;
+
+typedef struct {
+    /* esp-mqtt / event-loop task context: must not block (post to the app). */
+    void (*on_event)(mhal_cloud_ev_t ev, int arg);
+    /* complete message (fragmented messages larger than the RX buffer are passed as
+     * len = -total_len with no data, so they can be counted). */
+    void (*on_data)(const char *topic, size_t topic_len, const char *data, int len);
+    /* cloud task: credentials for an attempt at unix time ts. 0 = ok. */
+    int (*make_auth)(uint32_t ts, char *user, size_t ulen, char *pass, size_t plen);
+} mhal_cloud_cbs_t;
+
+typedef struct {
+    const char *ssid, *wifi_pass; /* Wi-Fi station (pass "" = open network) */
+    const char *host;             /* NULL = Wi-Fi only */
+    uint16_t port;
+    const char *client_id;
+    const char *const *subs; /* topics subscribed (QoS 1) on every connection */
+    int nsubs;
+} mhal_cloud_cfg_t;
+
+typedef struct {
+    bool wifi_up, time_synced, mqtt_up;
+    int8_t rssi;
+    uint32_t wifi_disconnects, mqtt_connects, mqtt_attempts, mqtt_disconnects;
+    int last_wifi_reason;  /* wifi_err_reason_t of the last disconnection */
+    int last_mqtt_error;   /* CONNACK return code, -1 transport/TLS error, 0 none */
+    uint32_t next_attempt_s; /* seconds until the next MQTT attempt (0 = now / connected) */
+} mhal_cloud_stats_t;
+
+/* Copies the configuration; starts the cloud task. Call once. 0 = started. */
+int mhal_cloud_start(const mhal_cloud_cfg_t *cfg, const mhal_cloud_cbs_t *cbs);
+/* Thread-safe, never blocks on the network: queues a publish in the MQTT outbox
+ * (sent by the esp-mqtt task). Returns the message id (QoS 1: PUBLISHED event follows)
+ * or < 0 when not connected / out of memory. */
+int mhal_cloud_publish(const char *topic, const char *payload, int len, int qos);
+void mhal_cloud_get_stats(mhal_cloud_stats_t *st);
+/* Unix time in ms, 0 while the clock has not been set by SNTP. */
+int64_t mhal_time_ms(void);
 
 #ifdef __cplusplus
 }

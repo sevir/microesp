@@ -33,7 +33,9 @@ void state_tick(uint32_t now)
     if (g_app.pcs.agent_lost) f |= FAULT_AGENT_LOST;
     if (g_app.wake.fault_failed) f |= FAULT_WAKE_FAILED;
     if (g_app.hid_not_armed) f |= FAULT_HID_NOT_ARMED;
-    if (g_app.activated && !g_app.cloud_connected && g_app.cloud_down_since &&
+    /* cloud_lost: provisioned but no TuyaLink MQTT session for 60 s (Wi-Fi down, no
+     * clock, broker unreachable or refusing the credentials) */
+    if (g_app.cloud_provisioned && !g_app.cloud_connected && g_app.cloud_down_since &&
         now - g_app.cloud_down_since >= CLOUD_LOST_AFTER_MS)
         f |= FAULT_CLOUD_LOST;
     if (f != g_app.faults) {

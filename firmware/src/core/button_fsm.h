@@ -4,9 +4,9 @@
  *   click (< 1 s), single            -> BTN_SHORT  (cancel countdown / next screen)
  *   two clicks within 400 ms          -> BTN_DOUBLE (wake PC)
  *   hold 3..5 s, then release         -> BTN_LONG3  (agent pairing mode)
- *   hold 5..10 s, then release        -> BTN_LONG5  (provisioning window: Tuya
+ *   hold 5..10 s, then release        -> BTN_LONG5  (provisioning window: TuyaLink/Wi-Fi
  *                                        credentials via the CDC CLI for 120 s)
- *   hold 10..20 s, then release       -> BTN_LONG10 (Tuya factory reset)
+ *   hold 10..20 s, then release       -> BTN_LONG10 (unused since TuyaLink)
  *   hold >= 20 s                      -> nothing here: the HAL supervisor enters ROM
  *                                        download mode (emergency recovery)
  * Holds of 1..3 s are ignored. Nothing is reported until the button has been seen

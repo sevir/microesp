@@ -2,11 +2,11 @@
 # header .build/include/tuya_kconfig.h defines them WITHOUT the CONFIG_ prefix).
 menu "MicroESP"
     config MESP_DEV_CLI
-        bool "Development CLI on the CDC port (!pair !cmd !wake !auth ... and debug logs)"
+        bool "Development CLI on the CDC port (!pair !cmd !wake !tylink clear ... and debug logs)"
         default n
         help
             n (release, default): the CDC CLI only accepts !help !status !version !dp
-            !log !dfu !usj !reboot !cancel; !auth/!pid only while not provisioned or
+            !log !dfu !usj !reboot !cancel; !tylink/!wifi only while not provisioned or
             within 120 s of a 5 s button hold; logs at NOTICE level.
             y ("./build.sh dev"): every command and DEBUG logs.
 endmenu
