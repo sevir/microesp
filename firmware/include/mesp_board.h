@@ -39,7 +39,7 @@
 #define MESP_LCD_Y_OFF 26 /* row offset in landscape (= column offset in portrait) */
 #endif
 #ifndef MESP_LCD_MADCTL
-#define MESP_LCD_MADCTL 0xA8 /* MY | MV | BGR: factory orientation (TFT_eSPI rotation 1) */
+#define MESP_LCD_MADCTL 0x68 /* MX | MV | BGR: factory orientation rotated 180° (USB plug faces the other way when mounted); 0xA8 = factory */
 #endif
 #ifndef MESP_LCD_INVERT
 #define MESP_LCD_INVERT 1 /* factory sends INVON (0x21) */
