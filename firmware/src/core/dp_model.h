@@ -1,5 +1,5 @@
 /*
- * MicroESP — typed Tuya DP table (docs/analisis/00-analisis-arquitectura.md §5) with
+ * MicroESP — typed Tuya DP table (docs/analysis/00-architecture-analysis.md §5) with
  * change thresholds and throttling, plus validation of DPs received from the cloud.
  * Pure C, host-tested; core/tylink.c maps it onto TuyaLink property codes/JSON (the
  * numeric ids are the Tuya abilityIds, kept as the internal key and in the docs).

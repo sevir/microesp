@@ -41,7 +41,7 @@ func runService(ctx context.Context, fn func(context.Context) error) error {
 	s, err := service.New(p, &service.Config{
 		Name:        ServiceName,
 		DisplayName: "MicroESP Agent",
-		Description: "Enlace con el dongle USB MicroESP (telemetría y apagado remoto)",
+		Description: "Link to the MicroESP USB dongle (telemetry and remote shutdown)",
 	})
 	if err != nil {
 		return err

@@ -1,139 +1,139 @@
-# Entorno de desarrollo MicroESP (MESP-US-0005)
+# MicroESP development environment (MESP-US-0005)
 
-Verificado en Linux (Pop!_OS / Ubuntu 24.04, x86_64) el 2026-10-03, sin `sudo`. Todo se instala en espacio de usuario bajo `/www/MicroESP/tools`.
+Verified on Linux (Pop!_OS / Ubuntu 24.04, x86_64) on 2026-10-03, without `sudo`. Everything is installed in user space under `/www/MicroESP/tools`.
 
-## 1. Versiones
+## 1. Versions
 
-| Componente | Versión | Ubicación |
+| Component | Version | Location |
 |---|---|---|
 | TuyaOpen | **v1.9.0** (commit `b80932d`) | `/www/MicroESP/tools/TuyaOpen` |
-| Entorno Python de TuyaOpen | uv 0.11.18 + Python 3.12.13 (`.venv/`) | dentro de TuyaOpen |
-| Plataforma ESP32 de TuyaOpen | `TuyaOpen-esp32` commit `e2b4b26` | `TuyaOpen/platform/ESP32` |
-| ESP-IDF (descargado por TuyaOpen) | **v5.4** (tag `67c1de1e`; aparece como `v5.4-dirty` porque TuyaOpen sustituye `tools/idf_tools.py`) | `TuyaOpen/platform/ESP32/esp-idf` |
-| Herramientas IDF | xtensa-esp-elf-gcc 14.2.0 (esp-14.2.0_20241119), ninja 1.12.1, esptool.py 4.12.0 | `TuyaOpen/platform/ESP32/.espressif` |
-| Componentes IDF usados | esp_tinyusb 2.3.0, tinyusb 0.21.0~2, led_strip 3.0.3, esp-sr **2.4.7 (fijado)** | gestor de componentes |
-| Go | 1.26.6 (ya instalado en el sistema) | — |
-| esptool independiente (opcional) | 5.4.0 en un venv propio | cualquier venv |
+| TuyaOpen Python environment | uv 0.11.18 + Python 3.12.13 (`.venv/`) | inside TuyaOpen |
+| TuyaOpen ESP32 platform | `TuyaOpen-esp32` commit `e2b4b26` | `TuyaOpen/platform/ESP32` |
+| ESP-IDF (downloaded by TuyaOpen) | **v5.4** (tag `67c1de1e`; shows as `v5.4-dirty` because TuyaOpen replaces `tools/idf_tools.py`) | `TuyaOpen/platform/ESP32/esp-idf` |
+| IDF tools | xtensa-esp-elf-gcc 14.2.0 (esp-14.2.0_20241119), ninja 1.12.1, esptool.py 4.12.0 | `TuyaOpen/platform/ESP32/.espressif` |
+| IDF components used | esp_tinyusb 2.3.0, tinyusb 0.21.0~2, led_strip 3.0.3, esp-sr **2.4.7 (pinned)** | component manager |
+| Go | 1.26.6 (already installed on the system) | — |
+| Standalone esptool (optional) | 5.4.0 in its own venv | any venv |
 
-Espacio en disco: ~2 GB TuyaOpen + 2 GB esp-idf + 3,8 GB herramientas `.espressif`.
+Disk space: ~2 GB TuyaOpen + 2 GB esp-idf + 3.8 GB `.espressif` tools.
 
-## 2. Instalación
+## 2. Installation
 
 ```bash
 mkdir -p /www/MicroESP/tools && cd /www/MicroESP/tools
 git clone --depth 1 --branch v1.9.0 https://github.com/tuya/TuyaOpen
 cd TuyaOpen
-mkdir -p .cache && touch .cache/.dont_prompt_update_platform   # evita prompts interactivos
-. ./export.sh            # crea .venv con uv, instala Python 3.12.13, deja tos.py en el PATH
-tos.py check             # git/cmake/make/ninja + submódulos
+mkdir -p .cache && touch .cache/.dont_prompt_update_platform   # avoids interactive prompts
+. ./export.sh            # creates .venv with uv, installs Python 3.12.13, puts tos.py on the PATH
+tos.py check             # git/cmake/make/ninja + submodules
 ```
 
-La plataforma ESP32 y su ESP-IDF se descargan solos en el primer `tos.py build` de una app ESP32 (clona `TuyaOpen-esp32`, ESP-IDF v5.4 con submódulos y ejecuta `install.sh esp32s3`). Tarda ~10–15 min.
+The ESP32 platform and its ESP-IDF are downloaded automatically on the first `tos.py build` of an ESP32 app (it clones `TuyaOpen-esp32`, ESP-IDF v5.4 with submodules and runs `install.sh esp32s3`). It takes ~10–15 min.
 
-Scripts de entorno (creados en `/www/MicroESP/tools`):
+Environment scripts (created in `/www/MicroESP/tools`):
 
 ```bash
-source /www/MicroESP/tools/tos-env.sh   # entorno TuyaOpen (tos.py)
-source /www/MicroESP/tools/idf-env.sh   # ESP-IDF "pelado" reutilizando el de TuyaOpen (idf.py)
+source /www/MicroESP/tools/tos-env.sh   # TuyaOpen environment (tos.py)
+source /www/MicroESP/tools/idf-env.sh   # "bare" ESP-IDF reusing TuyaOpen's (idf.py)
 ```
 
-`idf-env.sh` exporta `IDF_PATH=/www/MicroESP/tools/TuyaOpen/platform/ESP32/esp-idf` e `IDF_TOOLS_PATH=…/platform/ESP32/.espressif`. ninja no venía en las herramientas instaladas por TuyaOpen; se añadió con:
+`idf-env.sh` exports `IDF_PATH=/www/MicroESP/tools/TuyaOpen/platform/ESP32/esp-idf` and `IDF_TOOLS_PATH=…/platform/ESP32/.espressif`. ninja was not among the tools installed by TuyaOpen; it was added with:
 
 ```bash
 source /www/MicroESP/tools/idf-env.sh
 python $IDF_PATH/tools/idf_tools.py install ninja
 ```
 
-No mezclar los dos entornos en la misma shell: usar uno por terminal (o subshell).
+Do not mix the two environments in the same shell: use one per terminal (or subshell).
 
-### Problemas encontrados y arreglos
+### Problems found and fixes
 
-1. **esp-sr / esp-dl incompatibles con IDF v5.4.0**: TuyaOpen pide `espressif/esp-sr ^2.0.0` sin fichero de bloqueo; hoy se resuelve a esp-sr 2.5.5 → esp-dl 3.3.x, que usa `MALLOC_CAP_SIMD` (no existe en IDF v5.4.0) y la compilación falla. Arreglo: el componente de la app fija `espressif/esp-sr: "==2.4.7"` (`hw/spikes/tuya-usb/esp_components/usb_composite/idf_component.yml`). Si se cambia, borrar `TuyaOpen/platform/ESP32/tuya_open_sdk/dependencies.lock`.
-2. **Tamaño de flash**: el board genérico `ESP32-S3` de TuyaOpen usa la tabla de 4 MB. Para la de 16 MB (OTA dual de 7,4 MB) hace falta un board que seleccione `PLATFORM_FLASHSIZE_16M`. Se creó el board `POCKET_DONGLE_S3` (fuente en `hw/spikes/tuya-usb/board/`), registrado en el checkout de TuyaOpen con `hw/spikes/tuya-usb/install-board.sh` (enlace simbólico + entrada en `boards/ESP32/Kconfig`; idempotente, `build.sh` lo ejecuta).
-3. **sdkconfig**: TuyaOpen copia un `sdkconfig` fijo por chip (`sdkconfig_esp32s3_uart`). Las opciones propias (TinyUSB) se añaden con la variable de entorno estándar de ESP-IDF `SDKCONFIG_DEFAULTS="<plataforma>/sdkconfig.defaults;<app>/sdkconfig.microesp"`, que exporta `build.sh`. Tras editar `sdkconfig.microesp`, compilar con `./build.sh clean`.
-4. `idf.py size` dentro de `tuya_open_sdk/` reconfigura sin el entorno de TuyaOpen: no usarlo. Para medir memoria: `python -m esp_idf_size dist/tuya-usb_1.0.0/tuya-usb_1.0.0.map` (entorno IDF).
+1. **esp-sr / esp-dl incompatible with IDF v5.4.0**: TuyaOpen asks for `espressif/esp-sr ^2.0.0` without a lock file; today it resolves to esp-sr 2.5.5 → esp-dl 3.3.x, which uses `MALLOC_CAP_SIMD` (it does not exist in IDF v5.4.0) and the build fails. Fix: the app component pins `espressif/esp-sr: "==2.4.7"` (`hw/spikes/tuya-usb/esp_components/usb_composite/idf_component.yml`). If it is changed, delete `TuyaOpen/platform/ESP32/tuya_open_sdk/dependencies.lock`.
+2. **Flash size**: TuyaOpen's generic `ESP32-S3` board uses the 4 MB table. For the 16 MB one (7.4 MB dual OTA) a board that selects `PLATFORM_FLASHSIZE_16M` is needed. The `POCKET_DONGLE_S3` board was created (source in `hw/spikes/tuya-usb/board/`), registered in the TuyaOpen checkout with `hw/spikes/tuya-usb/install-board.sh` (symbolic link + entry in `boards/ESP32/Kconfig`; idempotent, `build.sh` runs it).
+3. **sdkconfig**: TuyaOpen copies a fixed `sdkconfig` per chip (`sdkconfig_esp32s3_uart`). Custom options (TinyUSB) are added through the standard ESP-IDF environment variable `SDKCONFIG_DEFAULTS="<platform>/sdkconfig.defaults;<app>/sdkconfig.microesp"`, which `build.sh` exports. After editing `sdkconfig.microesp`, build with `./build.sh clean`.
+4. `idf.py size` inside `tuya_open_sdk/` reconfigures without the TuyaOpen environment: do not use it. To measure memory: `python -m esp_idf_size dist/tuya-usb_1.0.0/tuya-usb_1.0.0.map` (IDF environment).
 
-## 3. Compilar
+## 3. Build
 
-Spike TuyaOpen + TinyUSB (app TuyaOpen con componentes ESP-IDF propios en `esp_components/`):
+TuyaOpen + TinyUSB spike (TuyaOpen app with its own ESP-IDF components in `esp_components/`):
 
 ```bash
 cd /www/MicroESP/microesp/hw/spikes/tuya-usb
-./build.sh          # incremental;  ./build.sh clean  tras tocar sdkconfig.microesp o el board
-# salida: dist/tuya-usb_1.0.0/{bootloader.bin,partition-table.bin,ota_data_initial.bin,tuya-usb.bin,srmodels.bin,tuya-usb_QIO_1.0.0.bin}
+./build.sh          # incremental;  ./build.sh clean  after touching sdkconfig.microesp or the board
+# output: dist/tuya-usb_1.0.0/{bootloader.bin,partition-table.bin,ota_data_initial.bin,tuya-usb.bin,srmodels.bin,tuya-usb_QIO_1.0.0.bin}
 ```
 
-Las credenciales van en `src/tuya_config_secrets.h` (ignorado por git; `build.sh` lo crea desde `.example` con valores de relleno).
+Credentials go in `src/tuya_config_secrets.h` (ignored by git; `build.sh` creates it from `.example` with placeholder values).
 
-Spike de pinout (ESP-IDF puro):
+Pinout spike (plain ESP-IDF):
 
 ```bash
 source /www/MicroESP/tools/idf-env.sh
 cd /www/MicroESP/microesp/hw/spikes/pinout
-idf.py set-target esp32s3   # solo la primera vez
+idf.py set-target esp32s3   # first time only
 idf.py build
 ```
 
-## 4. Acceso al puerto serie (`sg dialout`)
+## 4. Serial port access (`sg dialout`)
 
-El usuario ya está en el grupo `dialout` (`scripts/setup-serial-access.sh`), pero las shells abiertas antes no lo tienen activo. Hasta volver a iniciar sesión, envolver **todo** comando que abra el puerto:
+The user is already in the `dialout` group (`scripts/setup-serial-access.sh`), but shells opened before that do not have it active. Until you log in again, wrap **every** command that opens the port:
 
 ```bash
-sg dialout -c "comando ..."
+sg dialout -c "command ..."
 ```
 
-Puertos (estables por número de serie):
+Ports (stable by serial number):
 
-| Estado del dongle | USB | Puerto |
+| Dongle state | USB | Port |
 |---|---|---|
-| Firmware con TinyUSB (MicroESP) | `303a:4002` | `/dev/serial/by-id/usb-MicroESP_MicroESP_MESP-<mac>-if01` (CDC) |
-| USB-Serial/JTAG (firmware sin TinyUSB, o ROM en modo descarga) | `303a:1001` | `/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_<MAC>-if00` |
+| Firmware with TinyUSB (MicroESP) | `303a:4002` | `/dev/serial/by-id/usb-MicroESP_MicroESP_MESP-<mac>-if01` (CDC) |
+| USB-Serial/JTAG (firmware without TinyUSB, or ROM in download mode) | `303a:1001` | `/dev/serial/by-id/usb-Espressif_USB_JTAG_serial_debug_unit_<MAC>-if00` |
 
-## 5. Flashear
+## 5. Flashing
 
-### 5.1 Firmware sin TinyUSB (USB-Serial/JTAG activo)
+### 5.1 Firmware without TinyUSB (USB-Serial/JTAG active)
 
 ```bash
 sg dialout -c "bash -c 'source /www/MicroESP/tools/idf-env.sh; cd /www/MicroESP/microesp/hw/spikes/pinout; idf.py -p /dev/ttyACM0 flash monitor'"
 ```
 
-### 5.2 Firmware con TinyUSB (sin pulsar BOOT) — verificado
+### 5.2 Firmware with TinyUSB (without pressing BOOT) — verified
 
-Con TinyUSB activo el PHY USB lo usa el USB-OTG y desaparece el USB-Serial/JTAG. El firmware entra en **modo descarga ROM** por cualquiera de estas vías:
+With TinyUSB active the USB PHY is used by USB-OTG and USB-Serial/JTAG disappears. The firmware enters **ROM download mode** in any of these ways:
 
-- *1200-baud touch*: abrir el CDC a 1200 bps y bajar DTR (`hw/spikes/tuya-usb/tools/touch1200.py`).
-- Comando `!dfu` por el CDC.
-- Mantener BOOT pulsado ≥2 s con el firmware en marcha.
+- *1200-baud touch*: open the CDC at 1200 bps and lower DTR (`hw/spikes/tuya-usb/tools/touch1200.py`).
+- The `!dfu` command over the CDC.
+- Hold BOOT for ≥2 s with the firmware running.
 
-El firmware devuelve el PHY al USB-Serial/JTAG, escribe `RTC_CNTL_FORCE_DOWNLOAD_BOOT` y reinicia: el dongle reaparece como `303a:1001` en modo descarga. Después se flashea con la secuencia de reset **por defecto** de esptool (con `--before no_reset` el reset final vuelve a dejarlo en modo descarga). Todo junto:
+The firmware gives the PHY back to USB-Serial/JTAG, writes `RTC_CNTL_FORCE_DOWNLOAD_BOOT` and reboots: the dongle reappears as `303a:1001` in download mode. Then flash with esptool's **default** reset sequence (with `--before no_reset` the final reset leaves it in download mode again). All together:
 
 ```bash
 sg dialout -c /www/MicroESP/microesp/hw/spikes/tuya-usb/tools/flash.sh
 ```
 
-Otros comandos CDC: `!usj` (reinicia **una vez** sin TinyUSB → esptool normal funciona), `!status`, `!log`, `!key`, `!wake`, `!reboot`.
+Other CDC commands: `!usj` (reboots **once** without TinyUSB → regular esptool works), `!status`, `!log`, `!key`, `!wake`, `!reboot`.
 
 ```bash
 sg dialout -c "bash -c 'source /www/MicroESP/tools/idf-env.sh; python /www/MicroESP/microesp/hw/spikes/tuya-usb/tools/mesp_cdc.py !status !log'"
 ```
 
-Redes de seguridad del firmware: si el host no lo enumera en 20 s, o si hay 3 reinicios seguidos por crash, arranca sin TinyUSB (USB-Serial/JTAG disponible).
+Firmware safety nets: if the host does not enumerate it within 20 s, or after 3 consecutive crash reboots, it boots without TinyUSB (USB-Serial/JTAG available).
 
-### 5.3 Modo descarga manual (último recurso)
+### 5.3 Manual download mode (last resort)
 
-1. Desenchufar el dongle.
-2. Mantener pulsado **BOOT** (GPIO0).
-3. Enchufar el dongle sin soltar BOOT; soltar tras 1 s.
-4. Aparece `303a:1001`; flashear con esptool o `idf.py flash`.
-5. Desenchufar y volver a enchufar (o reset de esptool) para arrancar el firmware.
+1. Unplug the dongle.
+2. Hold **BOOT** (GPIO0).
+3. Plug in the dongle without releasing BOOT; release after 1 s.
+4. `303a:1001` appears; flash with esptool or `idf.py flash`.
+5. Unplug and plug in again (or esptool reset) to boot the firmware.
 
-## 6. Restaurar el firmware de fábrica
+## 6. Restore the factory firmware
 
-Backup completo de 16 MB: `hw/factory-backup/pocket-dongle-s3_factory_16MB.bin` (comprobar desde la raíz del repo con `sha256sum -c hw/factory-backup/SHA256SUMS`).
+Full 16 MB backup: `hw/factory-backup/pocket-dongle-s3_factory_16MB.bin` (check from the repo root with `sha256sum -c hw/factory-backup/SHA256SUMS`).
 
 ```bash
-# Si corre un firmware con TinyUSB, ponerlo antes en modo descarga (touch 1200 / !dfu / BOOT al enchufar)
+# If firmware with TinyUSB is running, put it in download mode first (1200 touch / !dfu / BOOT while plugging in)
 sg dialout -c "bash -c 'source /www/MicroESP/tools/idf-env.sh; python -m esptool --chip esp32s3 -p /dev/ttyACM0 -b 921600 write_flash 0x0 /www/MicroESP/microesp/hw/factory-backup/pocket-dongle-s3_factory_16MB.bin'"
 ```
 
-Escribir la imagen completa restaura también la NVS y la tabla de particiones originales.
+Writing the full image also restores the original NVS and partition table.

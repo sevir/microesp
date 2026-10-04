@@ -29,14 +29,14 @@ jobs:
       - name: gofmt
         run: |
           unformatted=$(gofmt -l .)
-          if [ -n "$unformatted" ]; then echo "::error::gofmt pendiente en:"; echo "$unformatted"; exit 1; fi
+          if [ -n "$unformatted" ]; then echo "::error::gofmt pending in:"; echo "$unformatted"; exit 1; fi
       - name: go vet (linux)
         run: go vet ./...
       - name: go vet (windows)
         run: GOOS=windows go vet ./...
       - name: staticcheck
         run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.1 ./...
-      - name: go test -race (lee ../protocol/testdata/vectors.json)
+      - name: go test -race (reads ../protocol/testdata/vectors.json)
         run: |
           go test -race -coverpkg=./internal/... -coverprofile=coverage.out ./...
           go tool cover -func=coverage.out | tail -1
@@ -45,7 +45,7 @@ jobs:
           name: agent-coverage
           path: agent/coverage.out
           retention-days: 14
-      - name: Compilación cruzada (linux amd64/arm64, windows amd64)
+      - name: Cross-compilation (linux amd64/arm64, windows amd64)
         run: make cross VERSION="ci-${GITHUB_SHA::7}"
 
   firmware-host-tests:
@@ -53,15 +53,15 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      # Solo gcc/make del runner + Unity, mbedTLS y cJSON a los commits de ESP-IDF v5.4 /
-      # TuyaOpen b80932d. No hace falta la toolchain de ESP.
+      # Only the runner's gcc/make + Unity, mbedTLS and cJSON at the ESP-IDF v5.4 /
+      # TuyaOpen b80932d commits. The ESP toolchain is not needed.
       - uses: actions/cache@v4
         with:
           path: .ci-deps
           key: host-test-deps-${{ hashFiles('scripts/ci/fetch-host-test-deps.sh') }}
-      - name: Dependencias de los tests
+      - name: Test dependencies
         run: scripts/ci/fetch-host-test-deps.sh .ci-deps
-      - name: Tests Unity (ASan/UBSan)
+      - name: Unity tests (ASan/UBSan)
         run: TOS="$PWD/.ci-deps/TuyaOpen" IDF="$PWD/.ci-deps/esp-idf" firmware/build.sh test
 
   firmware-build:
@@ -74,8 +74,8 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      # Usa .gitleaks.toml de la raíz. En cuentas de organización la acción exige
-      # el secreto GITLEAKS_LICENSE (gratuito); en cuentas personales no.
+      # Uses .gitleaks.toml from the repo root. On organization accounts the action requires
+      # the GITLEAKS_LICENSE secret (free); personal accounts do not.
       - uses: gitleaks/gitleaks-action@v2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

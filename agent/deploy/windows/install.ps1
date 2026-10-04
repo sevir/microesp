@@ -1,14 +1,14 @@
 <#
 .SYNOPSIS
-  Instala (o desinstala) microesp-agent como servicio de Windows.
+  Installs (or uninstalls) microesp-agent as a Windows service.
 .DESCRIPTION
-  Ejecutar en PowerShell como Administrador:
+  Run in PowerShell as Administrator:
     .\install.ps1 [-Binary .\microesp-agent.exe]
     .\install.ps1 -Uninstall [-Purge]
-    .\install.ps1 -DryRun            # muestra las acciones sin aplicarlas
-  El servicio corre como LocalSystem (necesario para "shutdown /s|/r /t 0").
-  Tras instalar, empareja con:  & "$env:ProgramFiles\MicroESP\microesp-agent.exe" pair
-  (detén antes el servicio: Stop-Service MicroESPAgent).
+    .\install.ps1 -DryRun            # shows the actions without applying them
+  The service runs as LocalSystem (required for "shutdown /s|/r /t 0").
+  After installing, pair with:  & "$env:ProgramFiles\MicroESP\microesp-agent.exe" pair
+  (stop the service first: Stop-Service MicroESPAgent).
 #>
 [CmdletBinding()]
 param(
@@ -32,7 +32,7 @@ function Invoke-Step([string]$Description, [scriptblock]$Action) {
 if (-not $DryRun) {
     $principal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
     if (-not $principal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-        throw 'Ejecuta este script como Administrador (o usa -DryRun).'
+        throw 'Run this script as Administrator (or use -DryRun).'
     }
 }
 
@@ -40,33 +40,33 @@ $existing = Get-Service -Name $ServiceName -ErrorAction SilentlyContinue
 
 if ($Uninstall) {
     if ($existing) {
-        Invoke-Step "detener y eliminar el servicio $ServiceName" {
+        Invoke-Step "stop and remove service $ServiceName" {
             Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue
             sc.exe delete $ServiceName | Out-Null
         }
     }
-    Invoke-Step "borrar $InstallDir" { Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue }
+    Invoke-Step "delete $InstallDir" { Remove-Item -Recurse -Force $InstallDir -ErrorAction SilentlyContinue }
     if ($Purge) {
-        Invoke-Step "borrar $DataDir (configuración y clave)" { Remove-Item -Recurse -Force $DataDir -ErrorAction SilentlyContinue }
+        Invoke-Step "delete $DataDir (configuration and key)" { Remove-Item -Recurse -Force $DataDir -ErrorAction SilentlyContinue }
     }
     return
 }
 
-if (-not $DryRun -and -not (Test-Path $Binary)) { throw "No se encuentra el binario: $Binary (usa -Binary)" }
+if (-not $DryRun -and -not (Test-Path $Binary)) { throw "Binary not found: $Binary (use -Binary)" }
 
 if ($existing) {
-    Invoke-Step "detener el servicio existente" { Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue }
+    Invoke-Step "stop existing service" { Stop-Service -Name $ServiceName -Force -ErrorAction SilentlyContinue }
 }
-Invoke-Step "copiar binario a $Exe" {
+Invoke-Step "copy binary to $Exe" {
     New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
     Copy-Item -Force $Binary $Exe
 }
-Invoke-Step "crear $DataDir con acceso solo para SYSTEM y Administradores" {
+Invoke-Step "create $DataDir with access only for SYSTEM and Administrators" {
     New-Item -ItemType Directory -Force -Path $DataDir | Out-Null
     icacls $DataDir /inheritance:r /grant:r 'SYSTEM:(OI)(CI)F' 'Administrators:(OI)(CI)F' | Out-Null
 }
 if (-not (Test-Path $ConfigFile)) {
-    Invoke-Step "crear configuración por defecto $ConfigFile" {
+    Invoke-Step "create default configuration $ConfigFile" {
         @(
             'device = "auto"'
             "key_file = '$DataDir\agent.key'"
@@ -80,12 +80,12 @@ if (-not (Test-Path $ConfigFile)) {
     }
 }
 if (-not $existing) {
-    Invoke-Step "registrar el servicio $ServiceName" {
+    Invoke-Step "register service $ServiceName" {
         New-Service -Name $ServiceName -DisplayName 'MicroESP Agent' `
-            -Description 'Enlace con el dongle USB MicroESP (telemetría y apagado remoto)' `
+            -Description 'Link to the MicroESP USB dongle (telemetry and remote shutdown)' `
             -BinaryPathName "`"$Exe`" run --config `"$ConfigFile`"" -StartupType Automatic | Out-Null
         sc.exe failure $ServiceName reset= 86400 actions= restart/3000/restart/3000/restart/3000 | Out-Null
     }
 }
-Invoke-Step "arrancar el servicio" { Start-Service -Name $ServiceName }
-Write-Host "Listo. Si aún no está emparejado: Stop-Service $ServiceName; & `"$Exe`" pair --config `"$ConfigFile`"; Start-Service $ServiceName"
+Invoke-Step "start service" { Start-Service -Name $ServiceName }
+Write-Host "Done. If not yet paired: Stop-Service $ServiceName; & `"$Exe`" pair --config `"$ConfigFile`"; Start-Service $ServiceName"

@@ -1,5 +1,5 @@
-# Release en tags v*: agente (goreleaser: linux amd64/arm64, windows amd64) + firmware,
-# con un único SHA256SUMS que cubre todos los ficheros publicados.
+# Release on v* tags: agent (goreleaser: linux amd64/arm64, windows amd64) + firmware,
+# with a single SHA256SUMS covering all published files.
 name: release
 
 on:
@@ -23,7 +23,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: La etiqueta coincide con la versión del firmware
+      - name: Tag matches the firmware version
         env:
           FW_VERSION: ${{ needs.firmware.outputs.version }}
         run: |
@@ -37,8 +37,8 @@ jobs:
           name: firmware-${{ needs.firmware.outputs.version }}
           path: agent/.release-firmware/raw
 
-      # Se publican la imagen fusionada (flashear en 0x0) y la app (OTA / esptool en 0x10000).
-      - name: Preparar binarios del firmware
+      # The merged image (flash at 0x0) and the app (OTA / esptool at 0x10000) are published.
+      - name: Prepare firmware binaries
         env:
           V: ${{ needs.firmware.outputs.version }}
         run: |

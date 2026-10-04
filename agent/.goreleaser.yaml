@@ -1,4 +1,4 @@
-# goreleaser v2 — binarios para Linux amd64/arm64 y Windows amd64.
+# goreleaser v2 — binaries for Linux amd64/arm64 and Windows amd64.
 version: 2
 project_name: microesp-agent
 
@@ -36,8 +36,8 @@ archives:
         dst: deploy
 
 checksum:
-  # Un único SHA256SUMS para el agente y el firmware (release.yml deja los .bin del
-  # firmware en agent/.release-firmware antes de ejecutar goreleaser).
+  # A single SHA256SUMS for the agent and the firmware (release.yml leaves the firmware .bin
+  # firmware into agent/.release-firmware before running goreleaser).
   name_template: SHA256SUMS
   algorithm: sha256
   extra_files:

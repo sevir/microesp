@@ -2,7 +2,7 @@
   "name": "microesp-panel",
   "version": "0.1.0",
   "private": true,
-  "description": "Panel MiniApp (Ray) de MicroESP para Smart Life, conectado al modelo TuyaLink",
+  "description": "MicroESP Panel MiniApp (Ray) for Smart Life, connected to the TuyaLink model",
   "scripts": {
     "start:tuya": "ray start --target=tuya",
     "build:tuya": "ray build --target=tuya",

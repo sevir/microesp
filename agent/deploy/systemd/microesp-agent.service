@@ -1,9 +1,9 @@
 # /etc/systemd/system/microesp-agent.service
 [Unit]
-Description=MicroESP agent (enlace USB con el dongle MicroESP)
+Description=MicroESP agent (USB link to the MicroESP dongle)
 Documentation=https://github.com/microesp/agent
-# El agente descubre y reabre el dongle por sí mismo (backoff 1..30 s),
-# así que no se ata al .device: sigue vivo aunque el dongle se desenchufe.
+# The agent discovers and reopens the dongle by itself (backoff 1..30 s),
+# so it is not bound to the .device: it stays alive even if the dongle is unplugged.
 After=dbus.service systemd-logind.service
 Wants=dbus.service
 StartLimitIntervalSec=0
@@ -12,18 +12,18 @@ StartLimitIntervalSec=0
 Type=simple
 ExecStart=/usr/local/bin/microesp-agent run --config /etc/microesp/agent.toml
 User=microesp
-# Grupo primario = el del usuario (microesp): /etc/microesp es root:microesp
-# 0750 y agent.toml 0640. Con Group=dialout el proceso NO pertenecería al
-# grupo microesp y no podría leer la configuración ni la clave.
+# Primary group = the user's (microesp): /etc/microesp is root:microesp
+# 0750 and agent.toml 0640. With Group=dialout the process would NOT belong to the
+# microesp group and could not read the configuration or the key.
 SupplementaryGroups=dialout
 Restart=always
 RestartSec=3
 UMask=0077
 
-# --- Endurecimiento -------------------------------------------------------
-# El apagado/reinicio se pide a logind por D-Bus (systemctl/busctl, AF_UNIX)
-# y lo autoriza la regla polkit 50-microesp.rules; no hacen falta
-# capacidades ni root.
+# --- Hardening -------------------------------------------------------
+# Shutdown/reboot is requested from logind over D-Bus (systemctl/busctl, AF_UNIX)
+# and authorized by the polkit rule 50-microesp.rules; no capabilities
+# or root are needed.
 NoNewPrivileges=yes
 CapabilityBoundingSet=
 AmbientCapabilities=

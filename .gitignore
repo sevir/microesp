@@ -1,10 +1,10 @@
-# --- Datos locales de herramientas (se conserva .pando.toml) ---
+# --- Local tool data (.pando.toml is kept) ---
 /.pando/data/
 /.pando/mesnada/logs/
 /.pando/mesnada/tasks.json
 .pando*
 
-# --- Salidas de compilación ---
+# --- Build outputs ---
 dist/
 .build/
 build/
@@ -16,19 +16,19 @@ coverage.out
 /agent/microesp-agent
 /agent/microesp-agent.exe
 
-# --- Dependencias descargadas por CI (scripts/ci/fetch-host-test-deps.sh) ---
+# --- Dependencies downloaded by CI (scripts/ci/fetch-host-test-deps.sh) ---
 /.ci-deps/
 /agent/.release-firmware/
 /.tuyaopen/
 
-# --- Secretos y credenciales: NUNCA al repositorio ---
+# --- Secrets and credentials: NEVER in the repository ---
 tuya_secrets.h
 tuya_config_secrets.h
 *.key
 *.pem
 .env
 
-# --- Copias de seguridad de flash de fábrica (solo SHA256SUMS va al repo) ---
+# --- Factory flash backups (only SHA256SUMS goes in the repo) ---
 hw/factory-backup/*.bin
 *_factory_*.bin
 

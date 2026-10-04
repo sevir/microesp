@@ -24,7 +24,7 @@ test:
 
 lint: vet staticcheck
 	@test -z "$$(gofmt -l .)" || { echo "gofmt:"; gofmt -l .; exit 1; }
-	@if command -v shellcheck >/dev/null; then shellcheck deploy/install.sh; else echo "shellcheck no disponible, se omite"; fi
+	@if command -v shellcheck >/dev/null; then shellcheck deploy/install.sh; else echo "shellcheck not available, skipping"; fi
 	bash -n deploy/install.sh
 
 vet:
@@ -36,7 +36,7 @@ staticcheck:
 	else echo "staticcheck local ausente o incompatible; usando go run"; \
 	go run honnef.co/go/tools/cmd/staticcheck@latest ./...; fi
 
-# Cobertura de internal/... (incluye código ejercitado desde otros paquetes).
+# Coverage of internal/... (includes code exercised from other packages).
 cover:
 	go test -race -coverpkg=./internal/... -coverprofile=coverage.out ./...
 	@go tool cover -func=coverage.out | tail -1

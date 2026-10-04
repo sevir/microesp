@@ -1,30 +1,30 @@
-# /etc/microesp/agent.toml — configuración de microesp-agent
-# Todas las claves son opcionales; se muestran los valores por defecto.
-# Overrides: variables MICROESP_* y flags (--device, --key-file, --dry-run,
+# /etc/microesp/agent.toml — microesp-agent configuration
+# All keys are optional; default values are shown.
+# Overrides: MICROESP_* variables and flags (--device, --key-file, --dry-run,
 # --power-backend, --log-level).
 
-# Puerto serie del dongle o "auto" (busca VID 303a / PID 4002 o producto "MicroESP").
-# Con la regla udev instalada también vale "/dev/microesp".
+# Dongle serial port or "auto" (looks for VID 303a / PID 4002 or product "MicroESP").
+# With the udev rule installed, this also works: "/dev/microesp".
 device = "auto"
 
-# Clave compartida (hex, modo 0600) creada por `microesp-agent pair`.
+# Shared key (hex, mode 0600) created by `microesp-agent pair`.
 key_file = "/etc/microesp/agent.key"
 
-# Sistemas de ficheros vigilados: se informa el MENOR % libre.
+# Monitored filesystems: the LOWEST free % is reported.
 disks = ["/"]
 
-# Telemetría: cada telemetry_interval o cuando un valor cambia más de 2 puntos.
+# Telemetry: every telemetry_interval or when a value changes by more than 2 points.
 telemetry_interval = "10s"
 
-# Latido si no se envió nada (el dongle marca offline a los 15 s). Es también
-# la ventana de medida de CPU.
+# Heartbeat if nothing was sent (the dongle marks offline after 15 s). It is also
+# the CPU measurement window.
 heartbeat_interval = "5s"
 
-# true = registrar las órdenes de apagado/reinicio sin ejecutarlas.
+# true = log shutdown/reboot commands without executing them.
 dry_run = false
 
 # "systemd" (systemctl poweroff|reboot), "logind-dbus" (busctl → logind)
-# o "windows" (shutdown /s|/r /t 0, solo en Windows).
+# or "windows" (shutdown /s|/r /t 0, Windows only).
 power_backend = "systemd"
 
 # debug | info | warn | error

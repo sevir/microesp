@@ -1,102 +1,102 @@
-# Protocolo MicroESP CDC v1 (agente ↔ dongle)
+# MicroESP CDC v1 protocol (agent ↔ dongle)
 
-Contrato entre `microesp-agent` (Go, en el PC) y el firmware del dongle, sobre el puerto CDC ACM del dispositivo USB compuesto. Vectores de prueba normativos: `protocol/testdata/vectors.json`.
+Contract between `microesp-agent` (Go, on the PC) and the dongle firmware, over the CDC ACM port of the composite USB device. Normative test vectors: `protocol/testdata/vectors.json`.
 
-## 1. Transporte
+## 1. Transport
 
-- USB CDC ACM. Baudrate irrelevante (se abre a 115200 8N1).
-- Identificación USB: VID `0x303A`, PID `0x4002`, product string `MicroESP`, serial `MESP-<mac12hex>` (MAC Wi-Fi en minúsculas sin separadores). Linux: `/dev/serial/by-id/usb-*MicroESP*`, symlink udev opcional `/dev/microesp`.
-- Framing: un objeto JSON UTF-8 por línea, terminado en `\n` (se tolera `\r\n`). **Máximo 512 bytes** por línea incluido el terminador. Línea más larga → se descarta hasta el siguiente `\n` y se responde `err{code:"too_long"}`.
-- Todo mensaje es un objeto con campo `t` (tipo). Campos desconocidos se ignoran (compatibilidad hacia delante). Tipo desconocido → `err{code:"bad_msg"}`.
-- Hex siempre en minúsculas. Nonces: 8 bytes aleatorios = 16 caracteres hex.
+- USB CDC ACM. Baud rate irrelevant (opened at 115200 8N1).
+- USB identification: VID `0x303A`, PID `0x4002`, product string `MicroESP`, serial `MESP-<mac12hex>` (Wi-Fi MAC in lowercase without separators). Linux: `/dev/serial/by-id/usb-*MicroESP*`, optional udev symlink `/dev/microesp`.
+- Framing: one UTF-8 JSON object per line, terminated by `\n` (`\r\n` is tolerated). **Maximum 512 bytes** per line including the terminator. Longer line → discarded up to the next `\n` and answered with `err{code:"too_long"}`.
+- Every message is an object with a `t` (type) field. Unknown fields are ignored (forward compatibility). Unknown type → `err{code:"bad_msg"}`.
+- Hex is always lowercase. Nonces: 8 random bytes = 16 hex characters.
 
-## 2. Criptografía
+## 2. Cryptography
 
-- Clave compartida `K`: 32 bytes, establecida en el emparejado (§4). Dongle: NVS. Agente: `/etc/microesp/agent.key` (hex, modo 0600).
-- `sig = hex(HMAC-SHA256(K, mensaje_ascii))`, 64 caracteres. Comparación en tiempo constante.
+- Shared key `K`: 32 bytes, established during pairing (§4). Dongle: NVS. Agent: `/etc/microesp/agent.key` (hex, mode 0600).
+- `sig = hex(HMAC-SHA256(K, ascii_message))`, 64 characters. Constant-time comparison.
 
-## 3. Sesión
+## 3. Session
 
 ```
-agente                          dongle
+agent                           dongle
   hello{v,host,os,agent_ver,macs,nonce=Na}  →
                                 ←  welcome{v,fw,dev,nonce=Nd,sig=HMAC(K,"welcome|Na|Nd")}
-  [agente verifica sig; si falla cierra y reintenta con backoff]
+  [agent verifies sig; on failure closes and retries with backoff]
   auth{sig=HMAC(K,"auth|Nd|Na")}           →
-                                ←  ready            (o err{code:"unauth"})
+                                ←  ready            (or err{code:"unauth"})
   tele / hb ...                             →
                                 ←  notice / cmd
   ack{id,ok,err?}                           →
 ```
 
-- `v` debe ser `1`; otro valor → `err{code:"unsupported_version"}`.
-- Si el dongle no tiene clave: responde a `hello` con `err{code:"not_paired"}`.
-- Antes de `ready`, el dongle ignora `tele`/`hb`/`ack` y responde `err{code:"unauth"}`.
-- Un `hello` nuevo reinicia la sesión (el agente se reconectó).
-- El dongle guarda las MACs de `hello.macs` (máx. 4) en NVS para Wake-on-LAN y `host` para el DP `pc_hostname`.
+- `v` must be `1`; any other value → `err{code:"unsupported_version"}`.
+- If the dongle has no key: it answers `hello` with `err{code:"not_paired"}`.
+- Before `ready`, the dongle ignores `tele`/`hb`/`ack` and answers `err{code:"unauth"}`.
+- A new `hello` restarts the session (the agent reconnected).
+- The dongle stores the MACs from `hello.macs` (max. 4) in NVS for Wake-on-LAN and `host` for the `pc_hostname` DP.
 
-### Mensajes agente → dongle
+### Agent → dongle messages
 
-| t | Campos | Notas |
+| t | Fields | Notes |
 |---|---|---|
-| `hello` | `v`, `host` (≤64), `os` (`linux`/`windows`), `agent_ver`, `macs` (array `aa:bb:..`), `nonce` | inicia sesión |
+| `hello` | `v`, `host` (≤64), `os` (`linux`/`windows`), `agent_ver`, `macs` (array `aa:bb:..`), `nonce` | starts the session |
 | `auth` | `sig` | |
-| `tele` | `seq` (uint32), `cpu`, `mem`, `disk_free` (enteros 0..1000 = décimas de %), `uptime` (s, uint32) | cada 10 s o cambio >20 décimas |
-| `hb` | — | cada 5 s si no hubo otro mensaje |
-| `ack` | `id`, `ok` (bool), `err` opcional (`bad_sig`, `replay`, `exec_failed`, `unknown_action`) | respuesta a `cmd`, antes de ejecutar |
-| `pair`, `pair_confirm` | ver §4 | |
+| `tele` | `seq` (uint32), `cpu`, `mem`, `disk_free` (integers 0..1000 = tenths of %), `uptime` (s, uint32) | every 10 s or change >20 tenths |
+| `hb` | — | every 5 s if there was no other message |
+| `ack` | `id`, `ok` (bool), optional `err` (`bad_sig`, `replay`, `exec_failed`, `unknown_action`) | reply to `cmd`, before executing |
+| `pair`, `pair_confirm` | see §4 | |
 
-### Mensajes dongle → agente
+### Dongle → agent messages
 
-| t | Campos | Notas |
+| t | Fields | Notes |
 |---|---|---|
 | `welcome` | `v`, `fw`, `dev` (mac12hex), `nonce`, `sig` | |
-| `ready` | — | sesión autenticada |
-| `notice` | `action` (`shutdown`/`reboot`), `in` (s) | aviso de cuenta atrás; `in:0` con `action:"cancel"` = cancelado |
-| `cmd` | `id` (uint32 creciente por sesión, empieza en 1), `action` (`shutdown`/`reboot`), `sig=HMAC(K,"cmd|id|action|Na|Nd")` | |
-| `pair_chal`, `pair_ok` | ver §4 | |
+| `ready` | — | authenticated session |
+| `notice` | `action` (`shutdown`/`reboot`), `in` (s) | countdown notice; `in:0` with `action:"cancel"` = cancelled |
+| `cmd` | `id` (uint32 increasing per session, starts at 1), `action` (`shutdown`/`reboot`), `sig=HMAC(K,"cmd|id|action|Na|Nd")` | |
+| `pair_chal`, `pair_ok` | see §4 | |
 | `err` | `code` (`bad_msg`, `too_long`, `unauth`, `not_paired`, `unsupported_version`, `pair_failed`) | |
 
-### Reglas de comandos (agente)
+### Command rules (agent)
 
-- Verificar `sig` con Na/Nd de la sesión actual; fallo → `ack{ok:false,err:"bad_sig"}`.
-- `id` debe ser mayor que el último aceptado en la sesión; si no → `ack{ok:false,err:"replay"}`.
-- `action` desconocida → `ack{ok:false,err:"unknown_action"}`.
-- Si todo es válido: enviar `ack{ok:true}` **y después** ejecutar.
+- Verify `sig` with the Na/Nd of the current session; failure → `ack{ok:false,err:"bad_sig"}`.
+- `id` must be greater than the last one accepted in the session; otherwise → `ack{ok:false,err:"replay"}`.
+- Unknown `action` → `ack{ok:false,err:"unknown_action"}`.
+- If everything is valid: send `ack{ok:true}` **and then** execute.
 
 ### Timeouts
 
-- Dongle: sin mensajes del agente durante 15 s → `agent_online=false`.
-- Dongle: `cmd` sin `ack` en 10 s → `last_result=cmd_rejected`.
-- Agente: sin `welcome` en 3 s → reintento con backoff exponencial (1 s … 30 s).
+- Dongle: no messages from the agent for 15 s → `agent_online=false`.
+- Dongle: `cmd` without `ack` in 10 s → `last_result=cmd_rejected`.
+- Agent: no `welcome` in 3 s → retry with exponential backoff (1 s … 30 s).
 
-## 4. Emparejado
+## 4. Pairing
 
-El dongle entra en modo emparejado si no tiene clave o tras pulsación larga (3 s) del botón; muestra un código de 6 dígitos aleatorio en pantalla durante 120 s.
+The dongle enters pairing mode if it has no key or after a long press (3 s) of the button; it shows a random 6-digit code on the screen for 120 s.
 
 ```
-agente (usuario teclea código C)        dongle (muestra C)
+agent (user types code C)               dongle (shows C)
   pair{v:1, nonce=Na}                →
                                     ←  pair_chal{nonce=Nd}
   K = HKDF-SHA256(ikm=C ascii, salt=bytes(Na)||bytes(Nd), info="microesp-pair-v1", L=32)
   pair_confirm{sig=HMAC(K,"pair|Na|Nd")} →
-                                    ←  pair_ok{sig=HMAC(K,"pair_ok|Nd|Na")}   (o err{code:"pair_failed"})
+                                    ←  pair_ok{sig=HMAC(K,"pair_ok|Nd|Na")}   (or err{code:"pair_failed"})
 ```
 
-- El dongle guarda K solo tras verificar `pair_confirm`; el agente guarda K solo tras verificar `pair_ok`.
-- 3 intentos fallidos → el dongle sale del modo emparejado.
-- Un emparejado nuevo sustituye la clave anterior.
-- Limitación conocida: un atacante que capture el tráfico USB podría forzar el código de 6 dígitos offline. Aceptado: requiere acceso físico/root al PC.
+- The dongle stores K only after verifying `pair_confirm`; the agent stores K only after verifying `pair_ok`.
+- 3 failed attempts → the dongle leaves pairing mode.
+- A new pairing replaces the previous key.
+- Known limitation: an attacker who captures the USB traffic could brute-force the 6-digit code offline. Accepted: it requires physical/root access to the PC.
 
-## 5. Mapeo a DPs Tuya (dongle)
+## 5. Mapping to Tuya DPs (dongle)
 
-Número = `abilityId`; en la nube (TuyaLink) cada DP viaja por su código de propiedad (`firmware/schema/dp.json`).
+Number = `abilityId`; in the cloud (TuyaLink) each DP travels under its property code (`firmware/schema/dp.json`).
 
-| Mensaje | DP |
+| Message | DP |
 |---|---|
-| `tele.cpu` / `mem` / `disk_free` | 105 `cpu_usage` / 106 `mem_usage` / 107 `disk_free` (value, escala 1) |
+| `tele.cpu` / `mem` / `disk_free` | 105 `cpu_usage` / 106 `mem_usage` / 107 `disk_free` (value, scale 1) |
 | `tele.uptime` | 110 `pc_uptime` |
 | `hello.host` | 111 `pc_hostname` |
-| sesión `ready` y heartbeat vivo | 108 `agent_online` |
-| DP 103 `power_off` / 104 `reboot` tras la cuenta atrás del DP 112 `cmd_countdown` | `cmd` shutdown / reboot |
-| resultado de `ack` | 113 `last_result` |
+| session `ready` and live heartbeat | 108 `agent_online` |
+| DP 103 `power_off` / 104 `reboot` after the DP 112 `cmd_countdown` countdown | `cmd` shutdown / reboot |
+| result of `ack` | 113 `last_result` |

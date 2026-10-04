@@ -146,7 +146,7 @@ type Throttle struct {
 	sent   bool
 }
 
-// DefaultDelta is the "cambio >20 décimas" threshold.
+// DefaultDelta is the "change > 20 tenths" threshold.
 const DefaultDelta = 20
 
 // Should reports whether s must be sent at now.

@@ -1,6 +1,6 @@
 # /etc/udev/rules.d/99-microesp.rules
-# Puerto CDC del dongle MicroESP (VID 303a, PID 4002): grupo dialout,
-# symlink /dev/microesp y fuera del alcance de ModemManager.
+# MicroESP dongle CDC port (VID 303a, PID 4002): dialout group,
+# /dev/microesp symlink, and kept away from ModemManager.
 SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="4002", GROUP="dialout", MODE="0660", SYMLINK+="microesp", ENV{ID_MM_DEVICE_IGNORE}="1"
-# Permitir que el teclado HID del dongle despierte el equipo (S3).
+# Allow the dongle's HID keyboard to wake the machine (S3).
 ACTION=="add", SUBSYSTEM=="usb", ENV{DEVTYPE}=="usb_device", ATTR{idVendor}=="303a", ATTR{idProduct}=="4002", ATTR{power/wakeup}="enabled"

@@ -60,5 +60,5 @@
 #define MESP_LED_PIN_CLK 39 /* APA102 CLK only */
 #endif
 #ifndef MESP_LED_MAX_BRIGHTNESS
-#define MESP_LED_MAX_BRIGHTNESS 48 /* 0..255 cap: "brillo bajo por defecto" */
+#define MESP_LED_MAX_BRIGHTNESS 48 /* 0..255 cap: "low brightness by default" */
 #endif

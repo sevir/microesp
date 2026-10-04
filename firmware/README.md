@@ -1,289 +1,289 @@
-# Firmware MicroESP (fase A)
+# MicroESP firmware (phase A)
 
-Firmware de producción del dongle **MicroESP** (Pocket-Dongle-S3, clon de LilyGO T-Dongle-S3) sobre **TuyaOpen v1.9.0 / ESP-IDF v5.4**, board `POCKET_DONGLE_S3`. Reutiliza lo validado en el spike `hw/spikes/tuya-usb/` (TinyUSB dentro de TuyaOpen, board de 16 MB, reflasheo sin BOOT).
+Production firmware for the **MicroESP** dongle (Pocket-Dongle-S3, a clone of the LilyGO T-Dongle-S3) on **TuyaOpen v1.9.0 / ESP-IDF v5.4**, board `POCKET_DONGLE_S3`. It reuses what was validated in the `hw/spikes/tuya-usb/` spike (TinyUSB inside TuyaOpen, 16 MB board, reflashing without BOOT).
 
-**Nube: TuyaLink** (desde 0.2.0, ADR-5 de `docs/analisis/00-analisis-arquitectura.md`). Las licencias TuyaOS (UUID/AuthKey) no se pueden conseguir, así que el firmware ya no usa el cliente `tuya_iot` de TuyaOpen: habla el protocolo abierto TuyaLink (MQTT sobre TLS) con un cliente propio sobre `esp-mqtt`. TuyaOpen se mantiene solo como marco (RTOS/`tal_*`, LVGL, compilación, tabla de particiones).
+**Cloud: TuyaLink** (since 0.2.0, ADR-5 in `docs/analysis/00-architecture-analysis.md`). TuyaOS licenses (UUID/AuthKey) cannot be obtained, so the firmware no longer uses TuyaOpen's `tuya_iot` client: it speaks the open TuyaLink protocol (MQTT over TLS) with its own client on top of `esp-mqtt`. TuyaOpen is kept only as a framework (RTOS/`tal_*`, LVGL, build, partition table).
 
-Estado: fase A completa (todo salvo el pulido de la interfaz). Conectado a la nube Tuya EU con TuyaLink y verificado en placa el 2026-10-04. Cableado, offsets y orientación del LCD verificados leyendo el firmware de fábrica por USB-JTAG (`hw/pinout.md`). Pendiente: tipo y pin del LED.
+Status: phase A complete (everything except UI polish). Connected to the Tuya EU cloud with TuyaLink and verified on the board on 2026-10-04. LCD wiring, offsets and orientation verified by reading the factory firmware over USB-JTAG (`hw/pinout.md`). Pending: LED type and pin.
 
-Historias: MESP-US-0009, 0010, 0011, 0012, 0013, 0014, 0015, 0016, 0017/0018/0020 (versión básica), 0022 y 0023.
+Stories: MESP-US-0009, 0010, 0011, 0012, 0013, 0014, 0015, 0016, 0017/0018/0020 (basic version), 0022 and 0023.
 
-## Estructura
+## Structure
 
 ```
 firmware/
-├── app_default.config     # board, LVGL y VERSIÓN (CONFIG_PROJECT_VERSION, única fuente)
-├── sdkconfig.microesp     # overlay ESP-IDF: TinyUSB y rollback OTA
-├── Kconfig                # opción MESP_DEV_CLI (CLI de desarrollo; n = release)
-├── build.sh               # compila (tos.py): release por defecto, "dev", "clean" y "test"
-├── install-board.sh       # registra board/POCKET_DONGLE_S3 en el checkout de TuyaOpen
-├── board/POCKET_DONGLE_S3 # board TuyaOpen (16 MB, PSRAM)
+├── app_default.config     # board, LVGL and VERSION (CONFIG_PROJECT_VERSION, single source)
+├── sdkconfig.microesp     # ESP-IDF overlay: TinyUSB and OTA rollback
+├── Kconfig                # MESP_DEV_CLI option (development CLI; n = release)
+├── build.sh               # builds (tos.py): release by default, "dev", "clean" and "test"
+├── install-board.sh       # registers board/POCKET_DONGLE_S3 in the TuyaOpen checkout
+├── board/POCKET_DONGLE_S3 # TuyaOpen board (16 MB, PSRAM)
 ├── include/
-│   ├── mesp_board.h       # PINES y parámetros de LCD/LED/botón (un único sitio)
-│   └── mesp_hal.h         # API entre la app TuyaOpen y el componente ESP-IDF
-├── src/                   # app TuyaOpen (no ve cabeceras ESP-IDF)
-│   ├── app_main.c         # arranque, bus de eventos y tarea de aplicación
-│   ├── cloud.c            # cliente TuyaLink: aprovisionamiento, reportes y órdenes
-│   ├── usb_composite.c    # eventos USB → app y hid_not_armed
-│   ├── agent_link.c       # sesión cdc-v1 con el agente
-│   ├── pairing.c          # modo emparejado del agente (código de 6 dígitos)
-│   ├── state.c            # pc_state (DP 101) y bitmap de fallos (DP 114)
-│   ├── wake.c             # encendido HID / WOL
-│   ├── power.c            # apagado/reinicio con cuenta atrás
+│   ├── mesp_board.h       # PINS and LCD/LED/button parameters (a single place)
+│   └── mesp_hal.h         # API between the TuyaOpen app and the ESP-IDF component
+├── src/                   # TuyaOpen app (does not see ESP-IDF headers)
+│   ├── app_main.c         # boot, event bus and application task
+│   ├── cloud.c            # TuyaLink client: provisioning, reports and commands
+│   ├── usb_composite.c    # USB events → app and hid_not_armed
+│   ├── agent_link.c       # cdc-v1 session with the agent
+│   ├── pairing.c          # agent pairing mode (6-digit code)
+│   ├── state.c            # pc_state (DP 101) and fault bitmap (DP 114)
+│   ├── wake.c             # HID / WOL power-on
+│   ├── power.c            # shutdown/reboot with countdown
 │   ├── button.c led.c display.c ota.c cli.c
-│   └── core/              # lógica en C puro, SIN dependencias de RTOS/IDF (tests en host)
-│       ├── link_proto.c   # protocolo cdc-v1 (parser, sesión, firma, emparejado)
-│       ├── mesp_crypto.c  # HMAC-SHA256 y HKDF-SHA256 (mbedTLS)
-│       ├── pc_state.c     # máquina de estados del PC
-│       ├── powercmd.c     # flujo de cuenta atrás → cmd → ack
-│       ├── wake_fsm.c     # secuencia de encendido y paquete mágico WOL
-│       ├── button_fsm.c   # gestos del botón
-│       ├── dp_model.c     # tabla de DPs, umbrales y throttling
-│       ├── tylink.c       # TuyaLink: firma de credenciales, topics, JSON de reporte/órdenes
-│       ├── cli_policy.c   # qué comandos CLI acepta cada compilación y ventana de aprovisionamiento
-│       └── log_redact.c   # censura de líneas de log con secretos
-├── esp_components/mesp_hal/  # componente ESP-IDF: TinyUSB, NVS, OTA, LCD, LED, botón, WOL,
+│   └── core/              # pure C logic, NO RTOS/IDF dependencies (host tests)
+│       ├── link_proto.c   # cdc-v1 protocol (parser, session, signing, pairing)
+│       ├── mesp_crypto.c  # HMAC-SHA256 and HKDF-SHA256 (mbedTLS)
+│       ├── pc_state.c     # PC state machine
+│       ├── powercmd.c     # countdown → cmd → ack flow
+│       ├── wake_fsm.c     # power-on sequence and WOL magic packet
+│       ├── button_fsm.c   # button gestures
+│       ├── dp_model.c     # DP table, thresholds and throttling
+│       ├── tylink.c       # TuyaLink: credential signing, topics, report/command JSON
+│       ├── cli_policy.c   # which CLI commands each build accepts, and the provisioning window
+│       └── log_redact.c   # redaction of log lines containing secrets
+├── esp_components/mesp_hal/  # ESP-IDF component: TinyUSB, NVS, OTA, LCD, LED, button, WOL,
 │                             #   Wi-Fi + SNTP + MQTT/TLS (hal_cloud.c)
-├── schema/dp.json         # descripción de los DPs (sincronizada con dp_model.c, lo comprueba un test)
-├── test/host/             # tests Unity en el PC (gcc + Makefile, ASan/UBSan)
+├── schema/dp.json         # DP description (kept in sync with dp_model.c, checked by a test)
+├── test/host/             # Unity tests on the PC (gcc + Makefile, ASan/UBSan)
 └── tools/                 # flash.sh, touch1200.py, mesp_cdc.py, set_build_mode.py
 ```
 
-## Arquitectura
+## Architecture
 
 ```
- Tuya cloud ⇄ TLS ⇄ [HAL: mesp_cloud (Wi-Fi, SNTP, ciclo MQTT) + esp-mqtt] ─┐ eventos
- PC (agente) ⇄ CDC ⇄ [HAL: TinyUSB, despachador de líneas, supervisor] ─┤ (cola)
- Botón GPIO0 ─────────────────────────── sondeo cada 20 ms ─┐        │
+ Tuya cloud ⇄ TLS ⇄ [HAL: mesp_cloud (Wi-Fi, SNTP, MQTT loop) + esp-mqtt] ─┐ events
+ PC (agent) ⇄ CDC ⇄ [HAL: TinyUSB, line dispatcher, supervisor] ─┤ (queue)
+ Button GPIO0 ─────────────────────────── polled every 20 ms ─┐        │
                                                             ▼        ▼
-                         [tarea mesp_app]: dueña de TODO el estado de la aplicación
+                         [mesp_app task]: owner of ALL application state
                           link · power · wake · state · DPs · LED · CLI · OTA
-                                         │ instantánea (mutex)
+                                         │ snapshot (mutex)
                                          ▼
-                         [hilo mesp_ui]: LVGL v9 → ST7735 (SPI + DMA)
+                         [mesp_ui thread]: LVGL v9 → ST7735 (SPI + DMA)
 ```
 
-- **Bus de eventos**: cola TuyaOpen (`tal_queue`) de `app_ev_t` (`app_post()`, nunca bloquea). Los callbacks de TinyUSB, del cliente MQTT, de Wi-Fi y del despachador CDC solo publican eventos. La tarea `mesp_app` los consume y ejecuta un tick de 20 ms (botón) y otro de 100 ms (timeouts, estado, reporte de DPs, LED y pantalla). Así toda la lógica corre en un solo hilo y no necesita locks.
-- **Nube (TuyaLink)**: la tarea HAL `mesp_cloud` es la dueña de la conexión: reintenta la Wi-Fi, espera a la hora de SNTP, pide a la app el usuario/contraseña de cada intento (la firma lleva la hora), crea el cliente `esp-mqtt` (TLS con el bundle de CAs de ESP-IDF), se suscribe y reconecta con espera 2, 4, 8, 16 y 32 s y después cada 120 s (el contador vuelve a 0 tras una conexión de ≥ 60 s). Toda la lógica (qué reportar, órdenes recibidas, respuestas) corre en la tarea `mesp_app`: `mhal_cloud_publish()` solo deja el mensaje en el *outbox* de `esp-mqtt` bajo un mutex, sin E/S de red en quien llama. Un `property/report` en vuelo como máximo: termina con su PUBACK (`EV_CLOUD`), y falla al desconectar o a los 30 s. Los mensajes recibidos llegan como `EV_CLOUD_RX` (copia del payload) y se procesan en la tarea de app.
-- **Watchdog software**: la tarea `mesp_app` avisa al supervisor del HAL en cada vuelta. Si pasa más de 60 s sin hacerlo, el supervisor reinicia el chip.
-- **División app/HAL**: el código de `src/` lo compila el CMake de TuyaOpen, que no ve las cabeceras de ESP-IDF. Todo lo que es específico de IDF está en `esp_components/mesp_hal` (componente enlazado con `WHOLE_ARCHIVE`), y la app lo usa a través de `include/mesp_hal.h`, que solo contiene tipos de C estándar.
-- **Núcleo testeable**: `src/core/` es C puro (cJSON + mbedTLS) y se prueba en el PC.
-- **Versión**: `CONFIG_PROJECT_VERSION` en `app_default.config` → `PROJECT_VERSION` (TuyaOpen) → `MESP_FW_VERSION` (`src/mesp_version.h`). Se usa en el `welcome.fw`, en la pantalla, en `!version` y en el log de arranque.
-- **Particiones**: `partitions_16M.csv` de TuyaOpen con OTA dual: nvs, otadata, `ota_0` y `ota_1` de 7,4 MB cada una, `model`, KV `tuya` y `factory_nvs`.
-- **Por qué se mantiene TuyaOpen**: es la opción de menor riesgo. Todo el código de la app usa `tal_*` (colas, hilos, log, KV), la pantalla usa su LVGL y la compilación, el board de 16 MB y las redes de seguridad USB están validados sobre él. Quitar `tuya_iot` no cambia nada de eso: el enlazador ya no incluye el cliente Tuya ni el BLE (imagen más pequeña y ~90 KB más de heap interno). Dos efectos laterales resueltos: los *hooks* de mutex de mbedTLS (`MBEDTLS_THREADING_ALT` en el sdkconfig de TuyaOpen) los instalaba `tuya_tls_init()`, ahora los instala `hal_cloud.c`; y la CLI de TuyaOpen en UART0 (`auth`) ya no se inicia.
+- **Event bus**: TuyaOpen queue (`tal_queue`) of `app_ev_t` (`app_post()`, never blocks). The TinyUSB, MQTT client, Wi-Fi and CDC dispatcher callbacks only post events. The `mesp_app` task consumes them and runs a 20 ms tick (button) and a 100 ms tick (timeouts, state, DP reporting, LED and display). This way all the logic runs in a single thread and needs no locks.
+- **Cloud (TuyaLink)**: the HAL task `mesp_cloud` owns the connection: it retries Wi-Fi, waits for SNTP time, asks the app for the username/password of each attempt (the signature includes the time), creates the `esp-mqtt` client (TLS with the ESP-IDF CA bundle), subscribes and reconnects with a back-off of 2, 4, 8, 16 and 32 s and then every 120 s (the counter resets to 0 after a connection lasting ≥ 60 s). All the logic (what to report, received commands, replies) runs in the `mesp_app` task: `mhal_cloud_publish()` only puts the message in the `esp-mqtt` *outbox* under a mutex, with no network I/O in the caller. At most one `property/report` is in flight: it ends with its PUBACK (`EV_CLOUD`), and fails on disconnect or after 30 s. Received messages arrive as `EV_CLOUD_RX` (a copy of the payload) and are processed in the app task.
+- **Software watchdog**: the `mesp_app` task notifies the HAL supervisor on every loop. If more than 60 s pass without it doing so, the supervisor resets the chip.
+- **App/HAL split**: the code in `src/` is built by TuyaOpen's CMake, which does not see the ESP-IDF headers. Everything IDF-specific lives in `esp_components/mesp_hal` (a component linked with `WHOLE_ARCHIVE`), and the app uses it through `include/mesp_hal.h`, which contains only standard C types.
+- **Testable core**: `src/core/` is pure C (cJSON + mbedTLS) and is tested on the PC.
+- **Version**: `CONFIG_PROJECT_VERSION` in `app_default.config` → `PROJECT_VERSION` (TuyaOpen) → `MESP_FW_VERSION` (`src/mesp_version.h`). It is used in `welcome.fw`, on the display, in `!version` and in the boot log.
+- **Partitions**: TuyaOpen's `partitions_16M.csv` with dual OTA: nvs, otadata, `ota_0` and `ota_1` of 7.4 MB each, `model`, `tuya` KV and `factory_nvs`.
+- **Why TuyaOpen is kept**: it is the lowest-risk option. All the app code uses `tal_*` (queues, threads, log, KV), the display uses its LVGL, and the build, the 16 MB board and the USB safety nets are validated on it. Removing `tuya_iot` changes none of that: the linker no longer includes the Tuya client or BLE (smaller image and ~90 KB more internal heap). Two side effects were resolved: the mbedTLS mutex *hooks* (`MBEDTLS_THREADING_ALT` in TuyaOpen's sdkconfig) used to be installed by `tuya_tls_init()` and are now installed by `hal_cloud.c`; and TuyaOpen's CLI on UART0 (`auth`) is no longer started.
 
-## Compilar
+## Build
 
-Entorno: `docs/dev-setup.md` (TuyaOpen en `/www/MicroESP/tools/TuyaOpen`).
+Environment: `docs/dev-setup.md` (TuyaOpen at `/www/MicroESP/tools/TuyaOpen`).
 
 ```bash
 cd firmware
-./build.sh            # incremental, RELEASE (MESP_DEV_CLI=n: CLI restringida, log NOTICE)
-./build.sh dev        # incremental, DESARROLLO (MESP_DEV_CLI=y: CLI completa, log DEBUG)
-./build.sh clean [dev] # tras cambiar sdkconfig.microesp, board o app_default.config
-./build.sh test       # solo tests en el host (no necesita toolchain)
-# salida: dist/microesp_<ver>/{bootloader.bin, partition-table.bin, ota_data_initial.bin, microesp.bin, srmodels.bin, microesp_QIO_<ver>.bin}
+./build.sh            # incremental, RELEASE (MESP_DEV_CLI=n: restricted CLI, NOTICE log)
+./build.sh dev        # incremental, DEVELOPMENT (MESP_DEV_CLI=y: full CLI, DEBUG log)
+./build.sh clean [dev] # after changing sdkconfig.microesp, the board or app_default.config
+./build.sh test       # host tests only (no toolchain needed)
+# output: dist/microesp_<ver>/{bootloader.bin, partition-table.bin, ota_data_initial.bin, microesp.bin, srmodels.bin, microesp_QIO_<ver>.bin}
 ```
 
-Las dos variantes escriben en el mismo `dist/`: vale la última que se compile. `tools/set_build_mode.py` regenera `.build/cache/using.config` (y borra `using.cmake` y `tuya_kconfig.h`) solo cuando cambia la variante, y `build.sh` comprueba al final que la cabecera generada coincide con la pedida. En la placa se ve la variante en `!help`, en `!status` (`cli: build=...`) y en la línea de arranque del log (`cli=dev|release`).
+Both variants write to the same `dist/`: whichever was built last wins. `tools/set_build_mode.py` regenerates `.build/cache/using.config` (and deletes `using.cmake` and `tuya_kconfig.h`) only when the variant changes, and `build.sh` checks at the end that the generated header matches the requested one. On the board the variant is visible in `!help`, in `!status` (`cli: build=...`) and in the boot line of the log (`cli=dev|release`).
 
-Memoria (`python -m esp_idf_size dist/microesp_0.1.0/microesp_0.1.0.map` en el entorno IDF; no usar `idf.py size`, que reconfigura el proyecto):
+Memory (`python -m esp_idf_size dist/microesp_0.1.0/microesp_0.1.0.map` in the IDF environment; do not use `idf.py size`, which reconfigures the project):
 
 | | v0.1.0 (TuyaOS) | v0.2.0 (TuyaLink) |
 |---|---|---|
-| Imagen app (release) | 1 594 224 B (21 % de un slot de 7,4 MB) | **1 364 192 B** (18 %); dev: +~450 B |
-| Flash `.text` / `.rodata` | 1 147 KB / 304 KB | 920 KB / 323 KB |
-| IRAM estática | 16 383 / 16 384 B | 16 383 / 16 384 B (sin cambios; nada nuevo en IRAM) |
-| D/IRAM estática | 144 KB usados / 198 KB libres | 120 KB usados / 216 KB libres |
-| Heap interno en ejecución | ~64,5 KB libres (mín. 62,6 KB) con Wi-Fi, BLE, TinyUSB y LVGL | **~154,8 KB libres** (mín. ~153,9 KB) con Wi-Fi, TLS/MQTT conectados, TinyUSB y LVGL; PSRAM libre 8,18 MB (mbedTLS usa PSRAM) |
+| App image (release) | 1,594,224 B (21% of a 7.4 MB slot) | **1,364,192 B** (18%); dev: +~450 B |
+| Flash `.text` / `.rodata` | 1,147 KB / 304 KB | 920 KB / 323 KB |
+| Static IRAM | 16,383 / 16,384 B | 16,383 / 16,384 B (unchanged; nothing new in IRAM) |
+| Static D/IRAM | 144 KB used / 198 KB free | 120 KB used / 216 KB free |
+| Internal heap at runtime | ~64.5 KB free (min 62.6 KB) with Wi-Fi, BLE, TinyUSB and LVGL | **~154.8 KB free** (min ~153.9 KB) with Wi-Fi, TLS/MQTT connected, TinyUSB and LVGL; PSRAM free 8.18 MB (mbedTLS uses PSRAM) |
 
-## Flashear (sin pulsar BOOT)
+## Flash (without pressing BOOT)
 
 ```bash
-sg dialout -c "tools/flash.sh"        # completo (bootloader, tabla, otadata, app, srmodels)
-sg dialout -c "tools/flash.sh --app"  # solo otadata + app
+sg dialout -c "tools/flash.sh"        # full (bootloader, table, otadata, app, srmodels)
+sg dialout -c "tools/flash.sh --app"  # otadata + app only
 ```
 
-`flash.sh` hace un *1200-baud touch* sobre el CDC: el firmware pasa a modo descarga ROM (`303a:1001`). Después ejecuta esptool con la secuencia de reset **por defecto**. No uses nunca `--before no_reset`: el reset final por RTS dejaría la placa otra vez en modo descarga.
+`flash.sh` does a *1200-baud touch* on the CDC: the firmware switches to ROM download mode (`303a:1001`). It then runs esptool with the **default** reset sequence. Never use `--before no_reset`: the final reset via RTS would leave the board in download mode again.
 
-| Vía al modo descarga / USJ | Efecto |
+| Way into download mode / USJ | Effect |
 |---|---|
-| 1200-baud touch (`tools/touch1200.py`) o `!dfu` | modo descarga ROM |
-| `!usj` | reinicia una vez sin TinyUSB (USB-Serial/JTAG, esptool normal) |
-| BOOT mantenido ≥ 20 s | modo descarga (lo gestiona el supervisor del HAL, funciona aunque la app esté colgada) |
-| Último recurso | BOOT pulsado al enchufar |
+| 1200-baud touch (`tools/touch1200.py`) or `!dfu` | ROM download mode |
+| `!usj` | reboots once without TinyUSB (USB-Serial/JTAG, normal esptool) |
+| BOOT held ≥ 20 s | download mode (handled by the HAL supervisor, works even if the app is hung) |
+| Last resort | BOOT pressed while plugging in |
 
-Verificado en placa: 1200-baud touch, `!dfu` y `!usj` seguidos de un esptool normal.
+Verified on the board: 1200-baud touch, `!dfu` and `!usj`, each followed by a normal esptool.
 
-**Redes de seguridad** (heredadas del spike y ampliadas):
-- Si no se enumera en 20 s, arranca una vez sin TinyUSB (USJ). Si en ese arranque no hay host USB (no llegan SOF durante 60 s, por ejemplo con el PC apagado y "Always On USB"), vuelve a TinyUSB con este fallback inhibido. Así el HID sigue disponible para encender el PC.
-- Tras 3 reinicios seguidos por crash, arranca sin TinyUSB.
-- `!log` vuelca el buffer de log de 64 KB en PSRAM (el log de TuyaOpen va a UART0, que no es accesible).
+**Safety nets** (inherited from the spike and extended):
+- If it does not enumerate within 20 s, it boots once without TinyUSB (USJ). If in that boot there is no USB host (no SOF for 60 s, for example with the PC off and "Always On USB"), it goes back to TinyUSB with this fallback inhibited. This keeps HID available to power the PC on.
+- After 3 consecutive crash reboots, it boots without TinyUSB.
+- `!log` dumps the 64 KB log buffer in PSRAM (the TuyaOpen log goes to UART0, which is not accessible).
 
-## Aprovisionamiento TuyaLink y Wi-Fi
+## TuyaLink provisioning and Wi-Fi
 
-El dispositivo se da de alta en la plataforma Tuya (producto con el modelo de DPs de `schema/dp.json`, conexión TuyaLink), que entrega **productId**, **deviceId** y **deviceSecret**. Se vincula a la cuenta de la app desde la propia plataforma (ya hecho para el dispositivo de desarrollo). No hay emparejado BLE/AP: se ha eliminado.
+The device is registered on the Tuya platform (a product with the DP model from `schema/dp.json`, TuyaLink connection), which provides **productId**, **deviceId** and **deviceSecret**. It is bound to the app account from the platform itself (already done for the development device). There is no BLE/AP pairing: it has been removed.
 
-Todo se guarda en NVS (namespace `microesp`: `tl_region`, `tl_pid`, `tl_did`, `tl_dsec`, `wifi_ssid`, `wifi_pass`) por la CLI del CDC y se aplica con `!reboot`. No hay credenciales en compilación (`tuya_secrets.h` ya no se usa).
+Everything is stored in NVS (namespace `microesp`: `tl_region`, `tl_pid`, `tl_did`, `tl_dsec`, `wifi_ssid`, `wifi_pass`) through the CDC CLI and applied with `!reboot`. There are no build-time credentials (`tuya_secrets.h` is no longer used).
 
 ```bash
 !tylink <eu|us|cn|in> <productId> <deviceId> <deviceSecret>
-!wifi <ssid> <contraseña>        # la contraseña es el RESTO de la línea: puede llevar espacios
+!wifi <ssid> <password>        # the password is the REST of the line: it may contain spaces
 !reboot
 ```
 
-- Región → broker: `eu` m1.tuyaeu.com, `us` m1.tuyaus.com, `cn` m1.tuyacn.com, `in` m1.tuyain.com (puerto 8883, TLS con verificación del certificado del servidor contra el bundle de CAs de ESP-IDF; `*.tuyaeu.com` lo firma GoDaddy, raíz "Go Daddy Root Certificate Authority - G2").
-- Validación: ids alfanuméricos de 8 a 32 caracteres; secreto de 8 a 64 caracteres imprimibles sin espacios; SSID sin espacios de 1 a 32 bytes; contraseña Wi-Fi obligatoria, de 8 a 64 caracteres (no hay soporte de redes abiertas, para que una contraseña olvidada no guarde una red abierta). Solo Wi-Fi de 2,4 GHz.
-- Conexión: `clientId=tuyalink_<deviceId>`, `username=<deviceId>|signMethod=hmacSha256,timestamp=<s>,secureMode=1,accessType=1`, `password=hex(HMAC-SHA256(deviceSecret, "deviceId=<id>,timestamp=<s>,secureMode=1,accessType=1"))`, *keepalive* 60 s. La hora sale de SNTP (`pool.ntp.org`, `time.google.com`); no se intenta conectar hasta sincronizarla en cada arranque. Solo puede haber **una conexión por deviceId**: otro cliente con el mismo id (por ejemplo `hw/spikes/tylink_test.py`) expulsa al dongle.
+- Region → broker: `eu` m1.tuyaeu.com, `us` m1.tuyaus.com, `cn` m1.tuyacn.com, `in` m1.tuyain.com (port 8883, TLS with verification of the server certificate against the ESP-IDF CA bundle; `*.tuyaeu.com` is signed by GoDaddy, root "Go Daddy Root Certificate Authority - G2").
+- Validation: alphanumeric ids of 8 to 32 characters; secret of 8 to 64 printable characters without spaces; SSID without spaces, 1 to 32 bytes; Wi-Fi password mandatory, 8 to 64 characters (open networks are not supported, so that a forgotten password does not store an open network). 2.4 GHz Wi-Fi only.
+- Connection: `clientId=tuyalink_<deviceId>`, `username=<deviceId>|signMethod=hmacSha256,timestamp=<s>,secureMode=1,accessType=1`, `password=hex(HMAC-SHA256(deviceSecret, "deviceId=<id>,timestamp=<s>,secureMode=1,accessType=1"))`, *keepalive* 60 s. The time comes from SNTP (`pool.ntp.org`, `time.google.com`); no connection is attempted until it is synchronized on each boot. There can only be **one connection per deviceId**: another client with the same id (for example `hw/spikes/tylink_test.py`) kicks the dongle out.
 
-**Aprovisionamiento en release**: `!tylink` y `!wifi` solo se aceptan si ese dato aún no está en NVS (la primera vez) o durante la **ventana de aprovisionamiento**: 120 s después de mantener el botón **entre 5 y 10 s** y soltarlo (la pantalla muestra "Suelta: aprovisionar" y luego "Aprovisionar 120 s"; `!status` indica `provisioning_window=<s>`). Fuera de la ventana responden `err: ... is locked`. En desarrollo se aceptan siempre, y `!tylink clear` / `!wifi clear` borran esos datos de NVS.
+**Provisioning in release**: `!tylink` and `!wifi` are only accepted if that datum is not yet in NVS (the first time) or during the **provisioning window**: 120 s after holding the button **between 5 and 10 s** and releasing it (the display shows "Suelta: aprovisionar" and then "Aprovisionar 120 s"; `!status` reports `provisioning_window=<s>`). Outside the window they reply `err: ... is locked`. In development they are always accepted, and `!tylink clear` / `!wifi clear` erase that data from NVS.
 
-Los secretos nunca se imprimen: `!status` muestra la región, el productId, el deviceId enmascarado (`26e0...0z`), el SSID y el estado, nunca el deviceSecret ni la contraseña. El deviceSecret, la contraseña Wi-Fi y cada contraseña MQTT derivada se registran en el censor de logs (ver "Logs"). La CLI registra solo el nombre del comando.
+Secrets are never printed: `!status` shows the region, the productId, the masked deviceId (`26e0...0z`), the SSID and the state, never the deviceSecret or the password. The deviceSecret, the Wi-Fi password and each derived MQTT password are registered in the log redactor (see "Logs"). The CLI logs only the command name.
 
-Los comandos de la época TuyaOS (`!auth`, `!pid`, `!reset-tuya`) responden `err: ... is not used with TuyaLink (use !tylink and !wifi)`.
+The TuyaOS-era commands (`!auth`, `!pid`, `!reset-tuya`) reply `err: ... is not used with TuyaLink (use !tylink and !wifi)`.
 
-Sin aprovisionar, el LED parpadea en azul y la pantalla muestra "Nube: !wifi/!tylink".
+When not provisioned, the LED blinks blue and the display shows "Nube: !wifi/!tylink".
 
-## Emparejado del agente (cdc-v1 §4)
+## Agent pairing (cdc-v1 §4)
 
-El dongle entra en modo emparejado si no tiene clave al arrancar o con el botón mantenido entre 3 y 5 s (presencia física). En desarrollo también con `!pair`. El código de 6 dígitos aleatorio se muestra **solo en pantalla** durante 120 s: nunca se registra en el log ni se envía por el CDC, y además está registrado en el censor de logs. Con 3 códigos erróneos sale del modo. `!unpair` (solo desarrollo) borra la clave; en release, un nuevo emparejado por botón sustituye la clave anterior.
+The dongle enters pairing mode if it has no key at boot or when the button is held between 3 and 5 s (physical presence). In development also with `!pair`. The random 6-digit code is shown **only on the display** for 120 s: it is never logged nor sent over the CDC, and it is also registered in the log redactor. After 3 wrong codes it leaves the mode. `!unpair` (development only) erases the key; in release, a new button pairing replaces the previous key.
 
 ```bash
 microesp-agent pair --config agent.toml [--code 123456]
 ```
 
-## CLI por el CDC
+## CLI over the CDC
 
-Las líneas que empiezan por `!` son CLI y las que empiezan por `{` son protocolo. El puerto es el mismo que usa el agente, que lo abre en exclusiva: para usar la CLI hay que parar antes el agente. El dongle cierra la sesión del agente en cuanto el host cierra el puerto (DTR baja).
+Lines starting with `!` are CLI and lines starting with `{` are protocol. The port is the same one the agent uses, and the agent opens it exclusively: to use the CLI the agent must be stopped first. The dongle closes the agent session as soon as the host closes the port (DTR drops).
 
-Cualquier proceso con acceso al puerto (grupo `dialout` o root) puede escribir en la CLI. Por eso hay dos variantes de compilación (`Kconfig`: `MESP_DEV_CLI`; política en `src/core/cli_policy.c`, con tests):
+Any process with access to the port (`dialout` group or root) can write to the CLI. That is why there are two build variants (`Kconfig`: `MESP_DEV_CLI`; policy in `src/core/cli_policy.c`, with tests):
 
-| Comando | Release | Dev | Qué hace |
+| Command | Release | Dev | What it does |
 |---|---|---|---|
-| `!status` | sí | sí | resumen: versión, USB, pc_state, fallos, agente, telemetría, power, wake, emparejado, variante/ventana, TuyaLink (región, productId, deviceId enmascarado, estado MQTT, intentos, último error, reportes y hace cuánto el último, órdenes recibidas), Wi-Fi (SSID, IP, RSSI, hora SNTP), heap. Sin secretos |
-| `!version`, `!dp`, `!help` | sí | sí | versión / valores actuales de los DPs (JSON) / ayuda |
-| `!log` | sí | sí | buffer de log (HAL), censurado (ver "Logs") |
-| `!cancel` | sí | sí | cancela la cuenta atrás o el `!cmd` programado |
-| `!reboot`, `!dfu`, `!usj` | sí | sí | reinicio / modo descarga / un arranque sin TinyUSB (HAL) |
-| `!tylink <región> <productId> <deviceId> <deviceSecret>`, `!wifi <ssid> <contraseña...>` | sin aprovisionar o en la ventana de 120 s | sí | TuyaLink / Wi-Fi → NVS (se aplican con `!reboot`) |
-| `!tylink clear`, `!wifi clear` | no | sí | borran esos datos de NVS |
-| `!auth`, `!pid`, `!reset-tuya` | no | no | obsoletos con TuyaLink (error claro) |
-| `!pair`, `!unpair` | no | sí | modo emparejado del agente / olvidar la clave |
-| `!wake [force]` | no | sí | sin `force` solo muestra el plan (simulación); con `force` ejecuta el encendido. Se ignora si el PC está encendido |
-| `!method <hid\|wol\|hid_then_wol>`, `!countdown <0..60>` | no | sí | DP 109 / DP 112 sin pasar por la nube |
-| `!cmd <shutdown\|reboot> [cuenta_atrás] [retardo_s]` | no | sí | simula DP 103/104. El retardo permite arrancar el agente antes de que se dispare |
-| `!key` | no | sí | pulsa y suelta Shift izquierda (inofensivo; solo con el bus activo) |
+| `!status` | yes | yes | summary: version, USB, pc_state, faults, agent, telemetry, power, wake, pairing, variant/window, TuyaLink (region, productId, masked deviceId, MQTT state, attempts, last error, reports and how long ago the last one was, received commands), Wi-Fi (SSID, IP, RSSI, SNTP time), heap. No secrets |
+| `!version`, `!dp`, `!help` | yes | yes | version / current DP values (JSON) / help |
+| `!log` | yes | yes | log buffer (HAL), redacted (see "Logs") |
+| `!cancel` | yes | yes | cancels the countdown or the scheduled `!cmd` |
+| `!reboot`, `!dfu`, `!usj` | yes | yes | reboot / download mode / one boot without TinyUSB (HAL) |
+| `!tylink <region> <productId> <deviceId> <deviceSecret>`, `!wifi <ssid> <password...>` | not provisioned or within the 120 s window | yes | TuyaLink / Wi-Fi → NVS (applied with `!reboot`) |
+| `!tylink clear`, `!wifi clear` | no | yes | erase that data from NVS |
+| `!auth`, `!pid`, `!reset-tuya` | no | no | obsolete with TuyaLink (clear error) |
+| `!pair`, `!unpair` | no | yes | agent pairing mode / forget the key |
+| `!wake [force]` | no | yes | without `force` it only shows the plan (dry run); with `force` it runs the power-on. Ignored if the PC is on |
+| `!method <hid\|wol\|hid_then_wol>`, `!countdown <0..60>` | no | yes | DP 109 / DP 112 without going through the cloud |
+| `!cmd <shutdown\|reboot> [countdown] [delay_s]` | no | yes | simulates DP 103/104. The delay allows starting the agent before it fires |
+| `!key` | no | yes | presses and releases left Shift (harmless; only with the bus active) |
 
-En release, un comando de desarrollo responde `err: <cmd> needs a development build` y uno de aprovisionamiento bloqueado `err: <cmd> is locked`. Cada comando se registra en el log solo por su nombre (nunca los argumentos), marcando `(refused)` si se rechaza. `!dfu` y el *1200-baud touch* siguen disponibles en release para poder reflashear sin botón. Esto supone que quien tiene acceso al puerto puede instalar otro firmware; es el mismo límite de confianza que root en el PC.
+In release, a development command replies `err: <cmd> needs a development build` and a blocked provisioning command replies `err: <cmd> is locked`. Each command is logged only by its name (never the arguments), marked `(refused)` if rejected. `!dfu` and the *1200-baud touch* remain available in release so the board can be reflashed without the button. This means that anyone with access to the port can install other firmware; it is the same trust boundary as root on the PC.
 
 ### Logs
 
-El log de TuyaOpen y de la app sale por UART0 y se copia al buffer que vuelca `!log`; los logs de ESP-IDF (Wi-Fi, `esp-mqtt`, TLS) también. En release el nivel de la app es NOTICE y en desarrollo DEBUG (ESP-IDF queda en INFO). En las dos variantes, `src/core/log_redact.c` sustituye por `[redacted: sensitive log line]` cualquier línea que contenga un secreto registrado (deviceSecret de TuyaLink, contraseña Wi-Fi, contraseña MQTT del intento en curso, código de emparejado) o una palabra sensible (`authkey`, `localkey`, `seckey`, `secret`, `regist_key`, `token`, `passwd`, `password`, `psk`...). El filtro se aplica también a las líneas de ESP-IDF (`mhal_log_set_filter`), en el buffer y en UART0; de esas líneas solo se examinan los primeros 255 bytes. La clave del agente es binaria y nunca se imprime.
+The TuyaOpen and app log goes out through UART0 and is copied to the buffer that `!log` dumps; so are the ESP-IDF logs (Wi-Fi, `esp-mqtt`, TLS). In release the app level is NOTICE and in development DEBUG (ESP-IDF stays at INFO). In both variants, `src/core/log_redact.c` replaces with `[redacted: sensitive log line]` any line containing a registered secret (TuyaLink deviceSecret, Wi-Fi password, MQTT password of the current attempt, pairing code) or a sensitive word (`authkey`, `localkey`, `seckey`, `secret`, `regist_key`, `token`, `passwd`, `password`, `psk`...). The filter is also applied to ESP-IDF lines (`mhal_log_set_filter`), in the buffer and on UART0; for those lines only the first 255 bytes are examined. The agent key is binary and is never printed.
 
-Herramienta: `tools/mesp_cdc.py '!status' '!dp'` (con `sg dialout` y el Python del entorno IDF, que trae pyserial).
+Tool: `tools/mesp_cdc.py '!status' '!dp'` (with `sg dialout` and the IDF environment's Python, which ships pyserial).
 
-## Botón (GPIO0)
+## Button (GPIO0)
 
-| Gesto | Acción |
+| Gesture | Action |
 |---|---|
-| Pulsación corta | cancela la cuenta atrás de apagado/reinicio; si no hay, cambia de pantalla |
-| Doble pulsación (< 400 ms) | enciende el PC (método del DP 109) |
-| Mantener 3-5 s y soltar | modo emparejado del agente |
-| Mantener 5-10 s y soltar | ventana de aprovisionamiento: `!tylink`/`!wifi` aceptados 120 s en release |
-| Mantener 10-20 s y soltar | sin acción desde TuyaLink (no hay vínculo BLE/AP que resetear) |
-| Mantener ≥ 20 s | modo descarga ROM (recuperación) |
+| Short press | cancels the shutdown/reboot countdown; if there is none, switches the screen |
+| Double press (< 400 ms) | powers the PC on (DP 109 method) |
+| Hold 3-5 s and release | agent pairing mode |
+| Hold 5-10 s and release | provisioning window: `!tylink`/`!wifi` accepted for 120 s in release |
+| Hold 10-20 s and release | no action since TuyaLink (there is no BLE/AP binding to reset) |
+| Hold ≥ 20 s | ROM download mode (recovery) |
 
-Antirrebote de 40 ms. Las pulsaciones de 1 a 3 s se ignoran. Ningún gesto se acepta hasta que el botón se ha visto suelto al menos una vez (protege frente a un GPIO0 bloqueado a nivel bajo al arrancar). Mientras se mantiene pulsado, la pantalla indica qué pasará al soltar. Cambio respecto al spike: allí ≥ 2 s activaba el modo descarga.
+40 ms debounce. Presses of 1 to 3 s are ignored. No gesture is accepted until the button has been seen released at least once (protects against a GPIO0 stuck low at boot). While held, the display shows what will happen on release. Change from the spike: there, ≥ 2 s triggered download mode.
 
 ## LED
 
-Driver seleccionable en `include/mesp_board.h`: `MESP_LED_TYPE` (`WS2812` por RMT o `APA102` por bit-bang), `MESP_LED_PIN` (40 por defecto), `MESP_LED_PIN_CLK` y `MESP_LED_MAX_BRIGHTNESS` (48/255, brillo bajo).
+Driver selectable in `include/mesp_board.h`: `MESP_LED_TYPE` (`WS2812` via RMT or `APA102` via bit-bang), `MESP_LED_PIN` (40 by default), `MESP_LED_PIN_CLK` and `MESP_LED_MAX_BRIGHTNESS` (48/255, low brightness).
 
-| Prioridad | Situación | Color |
+| Priority | Situation | Color |
 |---|---|---|
-| 1 | cuenta atrás de apagado/reinicio | rojo parpadeo rápido (4 Hz) |
-| 2 | encendido enviado (esperando al PC) | blanco pulsante |
-| 3 | emparejando (agente) o nube sin aprovisionar (`!tylink`/`!wifi`) | azul parpadeo (1 Hz) |
-| 4 | error (fallos excepto `hid_not_armed`; incluye `cloud_lost`) | rojo fijo |
-| 5 | PC encendido con agente | verde |
-| 6 | PC encendido sin agente / arrancando | ámbar (arrancando: parpadeo) |
-| 7 | PC apagado / suspendido / desconocido | blanco tenue |
+| 1 | shutdown/reboot countdown | red, fast blink (4 Hz) |
+| 2 | power-on sent (waiting for the PC) | white, pulsing |
+| 3 | pairing (agent) or cloud not provisioned (`!tylink`/`!wifi`) | blue, blinking (1 Hz) |
+| 4 | error (faults except `hid_not_armed`; includes `cloud_lost`) | solid red |
+| 5 | PC on with agent | green |
+| 6 | PC on without agent / booting | amber (booting: blinking) |
+| 7 | PC off / suspended / unknown | dim white |
 
-## Pantalla (versión básica)
+## Display (basic version)
 
-ST7735 en horizontal (160×80) con LVGL v9 de TuyaOpen en su propio hilo. Pines, offsets (`x=1`, `y=26`), `MADCTL=0x68`, inversión y polaridad de la retroiluminación están en `include/mesp_board.h` y se pueden sobrescribir con `-D`.
+ST7735 in landscape (160×80) with TuyaOpen's LVGL v9 in its own thread. Pins, offsets (`x=1`, `y=26`), `MADCTL=0x68`, inversion and backlight polarity are in `include/mesp_board.h` and can be overridden with `-D`.
 
-Pantallas: **estado** (estado del PC, hostname, iconos Wi-Fi/nube/agente y versión), **telemetría** (barras CPU / MEM / disco libre), **cuenta atrás** (automática, con "Pulsa para cancelar") y **código de emparejado** (automática). La pulsación corta alterna estado y telemetría; con el agente conectado rotan solas cada 5 s. Una línea inferior muestra avisos temporales. El pulido (iconos, tipografías, `docs/ui.md`) queda para la fase B.
+Screens: **status** (PC state, hostname, Wi-Fi/cloud/agent icons and version), **telemetry** (CPU / MEM / free disk bars), **countdown** (automatic, with "Pulsa para cancelar") and **pairing code** (automatic). A short press toggles between status and telemetry; with the agent connected they rotate on their own every 5 s. A bottom line shows temporary notices. Polish (icons, typefaces, `docs/ui.md`) is left for phase B.
 
 ## DPs
 
-Tabla completa en `schema/dp.json`. En TuyaLink cada DP es una **propiedad** del modelo de cosa identificada por su **código** (`pc_state`, `power_on`...); los números 101-114 son los `abilityId` de la plataforma y se mantienen como clave interna y en la documentación. Codificación JSON: bool → `true/false`; value → entero (escala 1: décimas de %); **enum → cadena** (`"on"`, `"hid_then_wol"`...; verificado con el modelo que devuelve `model/get_response`); bitmap (`fault`) → entero con la máscara; string → cadena. Topics (`tylink/<deviceId>/thing/...`): publica `property/report`, `property/set_response`, `action/execute_response` y `model/get` (una vez por conexión); se suscribe a `property/set`, `action/execute`, `model/get_response` y `property/report_response`.
+Full table in `schema/dp.json`. In TuyaLink each DP is a **property** of the thing model identified by its **code** (`pc_state`, `power_on`...); the numbers 101-114 are the platform's `abilityId` and are kept as the internal key and in the documentation. JSON encoding: bool → `true/false`; value → integer (scale 1: tenths of %); **enum → string** (`"on"`, `"hid_then_wol"`...; verified against the model returned by `model/get_response`); bitmap (`fault`) → integer with the mask; string → string. Topics (`tylink/<deviceId>/thing/...`): it publishes `property/report`, `property/set_response`, `action/execute_response` and `model/get` (once per connection); it subscribes to `property/set`, `action/execute`, `model/get_response` and `property/report_response`.
 
-- **Órdenes (`property/set`)**: puede traer varias propiedades. Cada una se valida (código conocido, escribible, tipo JSON correcto, rango); las válidas se aplican en orden y las demás se rechazan una a una. Respuesta `property/set_response` con el mismo `msgId` y `code` 0 si todas eran válidas o 1 si alguna se rechazó. Un mensaje sin `msgId` (1..32 caracteres) o sin objeto `data` se descarta sin respuesta. `action/execute` responde siempre `code` 1 (el modelo no tiene acciones).
+- **Commands (`property/set`)**: it may carry several properties. Each one is validated (known code, writable, correct JSON type, range); the valid ones are applied in order and the others are rejected one by one. The reply is `property/set_response` with the same `msgId` and `code` 0 if all were valid or 1 if any was rejected. A message without `msgId` (1..32 characters) or without a `data` object is discarded without a reply. `action/execute` always replies `code` 1 (the model has no actions).
 
-Resumen:
+Summary:
 
-- **101 `pc_state`**: estado del PC. **102 `power_on`**: pulsador; vuelve a `false`. **103/104 `power_off`/`reboot`**: `true` lanza la cuenta atrás y `false` durante la cuenta atrás la cancela; vuelven a `false` al terminar.
-- **105/106/107**: CPU, memoria y disco libre en décimas de %, de 0 a 1000. **108 `agent_online`**. **109 `wake_method`**: guardado en NVS. **110 `pc_uptime`**. **111 `pc_hostname`**. **112 `cmd_countdown`**: de 0 a 60, 10 por defecto, guardado en NVS. **113 `last_result`**.
-- **114 `fault`**: bit0 `agent_lost`, bit1 `wake_failed`, bit2 `hid_not_armed`, bit3 `cloud_lost` (sin `vbus_low`). IDs seguidos: la plataforma Tuya los asigna en secuencia.
-- **Política de reporte**: asíncrono, desde la tarea de aplicación y solo con MQTT conectado.
-  - Telemetría: si cambia ≥ 20 décimas (con al menos 5 s entre reportes) o cualquier cambio cada 30 s.
-  - Uptime: como mucho uno por minuto.
-  - Resto: al cambiar.
-  - Cada DP tiene un intervalo mínimo ≥ 300 ms (≤ 200 reportes/DP/min).
-  - En cada conexión MQTT se reportan todos.
-  - Un reporte se da por bueno con su PUBACK (QoS 1). Si falla (desconexión, sin PUBACK en 30 s o sin conexión al encolarlo), se reintenta a los 5 s.
+- **101 `pc_state`**: PC state. **102 `power_on`**: push button; returns to `false`. **103/104 `power_off`/`reboot`**: `true` starts the countdown and `false` during the countdown cancels it; they return to `false` when it ends.
+- **105/106/107**: CPU, memory and free disk in tenths of %, from 0 to 1000. **108 `agent_online`**. **109 `wake_method`**: stored in NVS. **110 `pc_uptime`**. **111 `pc_hostname`**. **112 `cmd_countdown`**: from 0 to 60, 10 by default, stored in NVS. **113 `last_result`**.
+- **114 `fault`**: bit0 `agent_lost`, bit1 `wake_failed`, bit2 `hid_not_armed`, bit3 `cloud_lost` (no `vbus_low`). Consecutive ids: the Tuya platform assigns them in sequence.
+- **Reporting policy**: asynchronous, from the application task and only with MQTT connected.
+  - Telemetry: if it changes ≥ 20 tenths (with at least 5 s between reports) or any change every 30 s.
+  - Uptime: at most one per minute.
+  - The rest: on change.
+  - Each DP has a minimum interval ≥ 300 ms (≤ 200 reports/DP/min).
+  - On each MQTT connection all of them are reported.
+  - A report is considered good with its PUBACK (QoS 1). If it fails (disconnect, no PUBACK within 30 s or no connection when queuing it), it is retried after 5 s.
 
-## Estado del PC (US-0015)
+## PC state (US-0015)
 
-Se fusionan cuatro señales: el estado del bus USB (montado/suspendido), si el agente está en línea (heartbeat con timeout de 15 s, o puerto cerrado), si hay un encendido en curso, y si el agente ha confirmado un apagado (`ack`). Se aplica la primera regla que se cumple, con histéresis:
+Four signals are merged: the USB bus state (mounted/suspended), whether the agent is online (heartbeat with a 15 s timeout, or port closed), whether a power-on is in progress, and whether the agent has confirmed a shutdown (`ack`). The first rule that matches is applied, with hysteresis:
 
-| Condición | Estado | Retención |
+| Condition | State | Hold |
 |---|---|---|
-| agente en línea | `on` | 0 s |
-| encendido en curso y bus no activo | `booting` | 0 s |
-| montado + suspendido + apagado confirmado | `off` (S5 con "Always On USB" solo se ve como suspensión) | 3 s |
-| montado + suspendido | `sleep` | 3 s |
-| no montado | `off` | 3 s |
-| bus activo y el agente estuvo en línea desde el último flanco de subida | `on_no_agent` (además fallo `agent_lost`) | 2 s |
-| bus activo y < 90 s desde el flanco de subida (montaje, reanudación o encendido) | `booting` | 0 s |
-| bus activo | `on_no_agent` | 2 s |
+| agent online | `on` | 0 s |
+| power-on in progress and bus not active | `booting` | 0 s |
+| mounted + suspended + shutdown confirmed | `off` (S5 with "Always On USB" only looks like a suspend) | 3 s |
+| mounted + suspended | `sleep` | 3 s |
+| not mounted | `off` | 3 s |
+| bus active and the agent was online since the last rising edge | `on_no_agent` (plus `agent_lost` fault) | 2 s |
+| bus active and < 90 s since the rising edge (mount, resume or power-on) | `booting` | 0 s |
+| bus active | `on_no_agent` | 2 s |
 
-Arranca en `unknown` y fija el primer estado a los 3 s.
+It starts at `unknown` and sets the first state after 3 s.
 
-`shutdown_expected` (apagado confirmado con `ack`) se borra al montar/reanudar el bus y también cuando un agente vuelve a autenticarse: si el agente vuelve, el apagado no llegó a ocurrir y una suspensión posterior es `sleep`, no `off`.
+`shutdown_expected` (shutdown confirmed with `ack`) is cleared when the bus mounts/resumes and also when an agent authenticates again: if the agent comes back, the shutdown did not actually happen and a later suspend is `sleep`, not `off`.
 
-`hid_not_armed` se evalúa en cada suspensión: se activa si el host suspende el bus sin armar el remote wakeup. Es el último valor conocido.
+`hid_not_armed` is evaluated on each suspend: it is set if the host suspends the bus without arming remote wakeup. It is the last known value.
 
-## Encendido (US-0014)
+## Power-on (US-0014)
 
-La orden **nunca se ignora**, aunque el PC parezca encendido: con *Smart Power On* de Lenovo la BIOS mantiene el teclado enumerado en S5. Una orden durante un encendido en curso reenvía el paso HID.
+The command is **never ignored**, even if the PC seems to be on: with Lenovo *Smart Power On* the BIOS keeps the keyboard enumerated in S5. A command during a power-on in progress resends the HID step.
 
-- **HID** (3 intentos separados 2 s):
-  - Bus activo (montado y no suspendido): **Alt+P** (Smart Power On).
-  - Bus suspendido y wakeup armado: `tud_remote_wakeup()` y Alt+P al reanudarse.
-  - No montado o no armado (S4/S5): señalización de resume forzada (estado K mediante `dcd_remote_wakeup` del DWC2), 3 intentos separados 2 s. Solo funciona si la BIOS vigila el puerto en S4/S5 ("Wake on USB" / "Always On USB"); falta validarlo en el Lenovo (MESP-US-0002).
-- **WOL**: paquete mágico por broadcast UDP a los puertos 9 y 7, a `255.255.255.255` y a la dirección de broadcast de la subred, para cada MAC recibida en el `hello` (como máximo 4, guardadas en NVS solo tras autenticar la sesión).
-- **`hid_then_wol`** (por defecto; el nombre se mantiene por compatibilidad con el DP): HID **y** WOL a la vez, y otro WOL a los 20 s si no hay éxito. Sin MACs conocidas, solo HID.
-- **Resultado**: `last_result=wake_sent` al enviar. Éxito = el agente conecta, o el PC vuelve a enumerar el dongle (nuevo montaje/reanudación) después del último Alt+P. Sin éxito en 120 s: `wake_failed` y bit `wake_failed`, que se borra con el siguiente encendido correcto.
+- **HID** (3 attempts 2 s apart):
+  - Bus active (mounted and not suspended): **Alt+P** (Smart Power On).
+  - Bus suspended and wakeup armed: `tud_remote_wakeup()` and Alt+P when it resumes.
+  - Not mounted or not armed (S4/S5): forced resume signalling (K state via the DWC2 `dcd_remote_wakeup`), 3 attempts 2 s apart. It only works if the BIOS watches the port in S4/S5 ("Wake on USB" / "Always On USB"); still to be validated on the Lenovo (MESP-US-0002).
+- **WOL**: magic packet by UDP broadcast to ports 9 and 7, to `255.255.255.255` and to the subnet broadcast address, for each MAC received in the `hello` (at most 4, stored in NVS only after authenticating the session).
+- **`hid_then_wol`** (default; the name is kept for compatibility with the DP): HID **and** WOL at the same time, and another WOL after 20 s if there is no success. With no known MACs, HID only.
+- **Result**: `last_result=wake_sent` on sending. Success = the agent connects, or the PC enumerates the dongle again (new mount/resume) after the last Alt+P. No success within 120 s: `wake_failed` and the `wake_failed` bit, which is cleared by the next successful power-on.
 
-## Apagado / reinicio (US-0016)
+## Shutdown / reboot (US-0016)
 
-1. DP 103/104 a `true`: si el agente no está en línea, `last_result=agent_offline`.
-2. Si está en línea, empieza la cuenta atrás del DP 112 y se envía `notice{action,in}`. Durante la cuenta atrás se puede cancelar con la pulsación corta, con el DP a `false` o con `!cancel`; el resultado es `cancelled` y se envía `notice{cancel}`.
-3. Al terminar la cuenta atrás se envía el `cmd` firmado (HMAC con los nonces de la sesión e id creciente por sesión).
-4. Con `ack ok`, `last_result=ok`. Con `ack` negativo o sin respuesta en 10 s, `cmd_rejected`.
-5. Los DP 103/104 vuelven a `false`.
+1. DP 103/104 set to `true`: if the agent is not online, `last_result=agent_offline`.
+2. If it is online, the DP 112 countdown starts and `notice{action,in}` is sent. During the countdown it can be cancelled with the short press, with the DP set to `false` or with `!cancel`; the result is `cancelled` and `notice{cancel}` is sent.
+3. When the countdown ends the signed `cmd` is sent (HMAC with the session nonces and an id that increases per session).
+4. With `ack ok`, `last_result=ok`. With a negative `ack` or no reply within 10 s, `cmd_rejected`.
+5. DP 103/104 return to `false`.
 
-Si la sesión del agente se cae con un `cmd` pendiente (puerto cerrado, agente reiniciado, nuevo `hello` o re-emparejado), el `ack` ya no puede llegar. Se resuelve en ese momento como `cmd_rejected`. Antes el flujo se quedaba esperando para siempre y rechazaba como "ocupado" cualquier orden posterior.
+If the agent session drops with a pending `cmd` (port closed, agent restarted, new `hello` or re-pairing), the `ack` can no longer arrive. It is resolved at that moment as `cmd_rejected`. Previously the flow would wait forever and reject any later command as "busy".
 
-## OTA y rollback (US-0011)
+## OTA and rollback (US-0011)
 
-**OTA por la nube: no disponible desde 0.2.0.** La gestionaba el cliente `tuya_iot` de TuyaOpen (`TUYA_EVENT_UPGRADE_NOTIFY`); los topics OTA de TuyaLink aún no están implementados. Las actualizaciones se hacen por USB (`tools/flash.sh`). Se conservan la tabla OTA dual y el rollback:
+**Cloud OTA: not available since 0.2.0.** It was handled by TuyaOpen's `tuya_iot` client (`TUYA_EVENT_UPGRADE_NOTIFY`); the TuyaLink OTA topics are not implemented yet. Updates are done over USB (`tools/flash.sh`). The dual OTA table and rollback are kept:
 
-**Rollback activado**: el sdkconfig de la plataforma lo traía desactivado, y `sdkconfig.microesp` lo activa con `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y`; el valor se ha comprobado en el `sdkconfig` generado. Una imagen nueva arranca como `PENDING_VERIFY` y se marca como válida tras el health check: ≥ 30 s en marcha y MQTT conectado si la nube está aprovisionada (una imagen llegada por la nube tiene que demostrar que puede volver a conectarse). Sin aprovisionar, basta con MQTT conectado o USB montado. Si no lo supera en 10 min, el firmware reinicia y el bootloader vuelve a la imagen anterior; un crash antes de marcarla también la revierte.
+**Rollback enabled**: the platform's sdkconfig had it disabled, and `sdkconfig.microesp` enables it with `CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y`; the value was checked in the generated `sdkconfig`. A new image boots as `PENDING_VERIFY` and is marked valid after the health check: ≥ 30 s running and MQTT connected if the cloud is provisioned (an image that arrived through the cloud has to prove it can connect again). When not provisioned, MQTT connected or USB mounted is enough. If it does not pass within 10 min, the firmware reboots and the bootloader returns to the previous image; a crash before marking it also reverts it.
 
-La OTA por TuyaLink queda pendiente.
+OTA over TuyaLink is still pending.
 
 ## Tests
 
@@ -291,59 +291,59 @@ La OTA por TuyaLink queda pendiente.
 ./build.sh test        # = make -C test/host
 ```
 
-80 tests Unity, con ASan y UBSan, que usan Unity, cJSON y mbedTLS del propio checkout de TuyaOpen/IDF:
+80 Unity tests, with ASan and UBSan, using the Unity, cJSON and mbedTLS from the TuyaOpen/IDF checkout itself:
 
-- **Criptografía y protocolo**: todos los vectores normativos de `protocol/testdata/vectors.json` (clave HKDF, firmas de `pair`/`pair_ok`/`welcome`/`auth`/`cmd`, mensajes válidos e inválidos y la firma de `cmd` incorrecta).
-- **Sesión**: handshake, `unauth`, `not_paired`, timeouts de agente en línea y de `ack`, `cmd` pendiente resuelto al caer la sesión, emparejado con 3 fallos y con la ventana de 120 s, re-emparejado y cierre de puerto.
-- **TuyaLink** (`test_tylink.c`): contraseña HMAC con vectores calculados en Python, usuario y clientId, hosts por región, validación de ids/secreto, topics y su clasificación, `msgId`; JSON de `property/report` (enums como cadena, bitmap como entero, escapes, todos los DPs caben en el buffer), respuestas y `model/get`; `property/set` con una y varias propiedades, códigos desconocidos, solo lectura, tipos incorrectos, fuera de rango, más propiedades que DPs, sobres malformados y truncados; nombres de enum iguales a los del núcleo y a `schema/dp.json`.
-- **Seguridad**: política de la CLI release/dev (qué comandos acepta cada variante, `!tylink`/`!wifi` por dato y ventana física de 120 s, comandos obsoletos, también al dar la vuelta el contador de ms), análisis de `!wifi` (contraseña con espacios = resto de la línea) y censura de logs (secretos registrados, incluidas la contraseña Wi-Fi y la MQTT, y palabras sensibles).
-- **Robustez (fuzz)**: todas las truncaciones de cada mensaje válido, líneas gigantes y de exactamente 511/512 bytes, anidamiento profundo, 37 casos malformados y 20 000 líneas aleatorias.
-- **Resto del núcleo**: tabla de transiciones del estado del PC, flujo de apagado/reinicio, secuencia de encendido y WOL, gestos del botón (incluido el de 5 s), y modelo de DPs (incluido que coincide con `schema/dp.json` y que un valor que cambia con el reporte en vuelo sigue pendiente).
+- **Cryptography and protocol**: all the normative vectors in `protocol/testdata/vectors.json` (HKDF key, signatures of `pair`/`pair_ok`/`welcome`/`auth`/`cmd`, valid and invalid messages and the wrong `cmd` signature).
+- **Session**: handshake, `unauth`, `not_paired`, agent-online and `ack` timeouts, pending `cmd` resolved when the session drops, pairing with 3 failures and with the 120 s window, re-pairing and port close.
+- **TuyaLink** (`test_tylink.c`): HMAC password with vectors computed in Python, username and clientId, hosts per region, id/secret validation, topics and their classification, `msgId`; `property/report` JSON (enums as strings, bitmap as integer, escapes, all DPs fit in the buffer), replies and `model/get`; `property/set` with one and several properties, unknown codes, read-only, wrong types, out of range, more properties than DPs, malformed and truncated envelopes; enum names equal to those of the core and of `schema/dp.json`.
+- **Security**: release/dev CLI policy (which commands each variant accepts, `!tylink`/`!wifi` per datum and the 120 s physical window, obsolete commands, also when the ms counter wraps around), `!wifi` parsing (password with spaces = rest of the line) and log redaction (registered secrets, including the Wi-Fi and MQTT passwords, and sensitive words).
+- **Robustness (fuzz)**: all truncations of each valid message, huge lines and lines of exactly 511/512 bytes, deep nesting, 37 malformed cases and 20,000 random lines.
+- **Rest of the core**: PC state transition table, shutdown/reboot flow, power-on sequence and WOL, button gestures (including the 5 s one), and the DP model (including that it matches `schema/dp.json` and that a value that changes while a report is in flight stays pending).
 
-### Prueba de extremo a extremo con el agente Go (siempre `dry_run`)
+### End-to-end test with the Go agent (always `dry_run`)
 
-El código de emparejado ya no sale por el CDC: hay que leerlo en la pantalla del dongle (o reutilizar una clave ya emparejada que siga en NVS; flashear con `flash.sh` no borra la NVS). `!cmd` solo existe en la compilación de desarrollo.
+The pairing code no longer goes out over the CDC: it has to be read on the dongle's display (or reuse an already paired key that remains in NVS; flashing with `flash.sh` does not erase NVS). `!cmd` only exists in the development build.
 
 ```bash
 go build -o $S/mea ./agent/cmd/microesp-agent
 # agent.toml: device=/dev/serial/by-id/usb-MicroESP_*-if01, key_file=$S/agent.key, dry_run=true
 ./build.sh dev && sg dialout -c "tools/flash.sh --app"
-tools/mesp_cdc.py '!pair'                                                # o botón 3-5 s; el código, en pantalla
+tools/mesp_cdc.py '!pair'                                                # or button 3-5 s; the code, on the display
 mea pair --config agent.toml --code NNNNNN
-tools/mesp_cdc.py '!cmd reboot 3 25'                                     # se dispara 25 s después
+tools/mesp_cdc.py '!cmd reboot 3 25'                                     # fires 25 s later
 timeout 60 mea run --config agent.toml --dry-run --log-level debug       # notice → cmd → ack → "DRY-RUN"
 tools/mesp_cdc.py '!status' '!dp'                                        # last_result=ok, 114=0, 104=false
 ```
 
-Resultado del 2026-10-03:
-- Emparejado al primer intento.
-- `session ready` con fw 0.1.0, host `lenovop3` y 3 MACs.
-- Telemetría recibida (DPs 106, 107, 108, 111 y 112) y `agent_online=true`.
-- Al disparar `notice reboot in 3` llegó el `cmd id 1` firmado, el agente lo verificó y respondió `ack ok`, y registró `DRY-RUN: power action not executed action=reboot`. En el dongle quedó `last_result=ok`.
-- Con el agente parado, `!cmd shutdown 0 0` dio `last_result=agent_offline`.
+Result of 2026-10-03:
+- Paired on the first attempt.
+- `session ready` with fw 0.1.0, host `lenovop3` and 3 MACs.
+- Telemetry received (DPs 106, 107, 108, 111 and 112) and `agent_online=true`.
+- When `notice reboot in 3` fired, the signed `cmd id 1` arrived, the agent verified it and replied `ack ok`, and logged `DRY-RUN: power action not executed action=reboot`. On the dongle it ended with `last_result=ok`.
+- With the agent stopped, `!cmd shutdown 0 0` gave `last_result=agent_offline`.
 
-Repetido tras el endurecimiento (2026-10-03, misma clave del agente guardada en NVS):
-- **Dev**: `!cmd reboot 3 25` → `notice reboot in 3` → `cmd id 1` → `ack ok` → `DRY-RUN: power action not executed action=reboot`; `last_result=ok`. Con `!pair` el log solo dice "code on the display"; varias líneas DEBUG de TuyaOpen (psk, regist_key...) salen como `[redacted: sensitive log line]`.
-- **Release** (lo que queda en la placa): enumera como `303a:4002`. `!status` muestra `cli: build=release` y no incluye secretos. `!pair`, `!cmd`, `!wake`, `!key`, `!unpair` y `!reset-tuya` se rechazan. `!auth` se acepta sin aprovisionar y después queda bloqueado; `!pid` igual (los datos de prueba se borraron con `!auth clear` en dev). El log no tiene líneas DEBUG/INFO. Con el agente: `session ready` (host `lenovop3`, 3 MACs) y 4 mensajes de telemetría recibidos (`tele: count=4`).
+Repeated after the hardening (2026-10-03, same agent key stored in NVS):
+- **Dev**: `!cmd reboot 3 25` → `notice reboot in 3` → `cmd id 1` → `ack ok` → `DRY-RUN: power action not executed action=reboot`; `last_result=ok`. With `!pair` the log only says "code on the display"; several TuyaOpen DEBUG lines (psk, regist_key...) appear as `[redacted: sensitive log line]`.
+- **Release** (what remains on the board): enumerates as `303a:4002`. `!status` shows `cli: build=release` and contains no secrets. `!pair`, `!cmd`, `!wake`, `!key`, `!unpair` and `!reset-tuya` are rejected. `!auth` is accepted when not provisioned and then becomes locked; `!pid` likewise (the test data was erased with `!auth clear` in dev). The log has no DEBUG/INFO lines. With the agent: `session ready` (host `lenovop3`, 3 MACs) and 4 telemetry messages received (`tele: count=4`).
 
-### Prueba de extremo a extremo con TuyaLink (2026-10-04)
+### End-to-end test with TuyaLink (2026-10-04)
 
-Dongle aprovisionado con un build de desarrollo (`!tylink` y `!wifi` enviados por un script que lee los secretos sin mostrarlos), región EU:
-- Wi-Fi (2,4 GHz, RSSI -58) e IP en ~5 s; SNTP; **MQTT conectado al primer intento** con TLS verificado contra `m1.tuyaeu.com`; suscripciones concedidas; `model/get_response` recibido (1837 B, el modelo de cosa con los 14 códigos); el primer `property/report` (8 DPs) confirmado con PUBACK.
-- Agente Go en `dry_run` 80 s: `session ready` (fw 0.2.0, host `lenovop3`, 3 MACs), 9 mensajes de telemetría → 10 `property/report` confirmados (24 DPs reportados en total), 0 fallos, 0 desconexiones.
-- `!log` no contiene el deviceSecret, la contraseña Wi-Fi ni el deviceId completo (comprobado por programa).
-- Release (lo que queda en la placa): conecta solo tras flashear (NVS conservada); `!tylink`/`!wifi` bloqueados (aprovisionado), `!tylink clear` bloqueado, `!auth`/`!pid`/`!reset-tuya` obsoletos, `!pair` solo en desarrollo; sin líneas DEBUG/INFO de la app.
-- Sin probar en placa: una orden real `property/set` desde la app tras el cambio (la decodificación tiene tests; con el spike de Python sí se recibió `{"power_on":true}` desde la app) y la expulsión por un segundo cliente con el mismo deviceId (reconexión con espera).
+Dongle provisioned with a development build (`!tylink` and `!wifi` sent by a script that reads the secrets without displaying them), EU region:
+- Wi-Fi (2.4 GHz, RSSI -58) and IP in ~5 s; SNTP; **MQTT connected on the first attempt** with TLS verified against `m1.tuyaeu.com`; subscriptions granted; `model/get_response` received (1837 B, the thing model with the 14 codes); the first `property/report` (8 DPs) confirmed with PUBACK.
+- Go agent in `dry_run` for 80 s: `session ready` (fw 0.2.0, host `lenovop3`, 3 MACs), 9 telemetry messages → 10 `property/report` confirmed (24 DPs reported in total), 0 failures, 0 disconnections.
+- `!log` contains neither the deviceSecret, the Wi-Fi password nor the full deviceId (checked programmatically).
+- Release (what remains on the board): connects on its own after flashing (NVS preserved); `!tylink`/`!wifi` locked (provisioned), `!tylink clear` locked, `!auth`/`!pid`/`!reset-tuya` obsolete, `!pair` development only; no DEBUG/INFO lines from the app.
+- Not tested on the board: a real `property/set` command from the app after the change (the decoding has tests; with the Python spike `{"power_on":true}` was indeed received from the app) and the kick-out by a second client with the same deviceId (reconnection with back-off).
 
-## Pendiente / limitaciones conocidas
+## Pending / known limitations
 
-- **Confirmación visual del usuario** (`hw/pinout.md`): pantalla (cableado, offsets, colores), retroiluminación y tipo/pin del LED. Todo se cambia en `include/mesp_board.h`.
-- **TuyaLink**: OTA por la nube sin implementar; `property/report_response` no llega en la región EU (tampoco al spike), así que la aceptación de cada valor por la nube no se puede confirmar desde el dispositivo (solo el PUBACK). Verificar en la app que llegan los valores y que `power_on` desde la app enciende.
-- **Encendido desde S3/S4/S5 sin validar** en el Lenovo (MESP-US-0002; en este entorno no se puede suspender el PC). El remote wakeup real y el resume forzado no se han probado. El WOL tampoco se ha probado con el PC apagado.
-- **Seguridad de la CLI**: resuelto con las variantes release/dev. Sigue abierto:
-  - `!dfu` y el *1200-baud touch* permiten reflashear desde el PC (decisión consciente: recuperación sin botón).
-  - La NVS no está cifrada (`CONFIG_NVS_ENCRYPTION`) ni hay *secure boot* / *flash encryption*: con acceso físico se puede leer la clave del agente, el deviceSecret y la contraseña Wi-Fi.
-- **Latencia de los DPs**: el *outbox* de `esp-mqtt` se vacía en cada vuelta de su tarea (≤ ~1 s); en placa, el PUBACK del primer reporte llega en el mismo segundo de la conexión.
-- **`mhal_cdc_write`** puede bloquear la tarea de app hasta ~1,5 s por línea si un programa abre el puerto y no lee. El watchdog software (60 s) cubre un bloqueo total.
-- **Heap interno** ~155 KB libres con Wi-Fi, TLS y LVGL (sin BLE).
-- **docs/ui.md**, tipografías e iconos definitivos, atenuación nocturna y 30 fps: fase B (MESP-US-0017/0018/0020).
+- **Visual confirmation by the user** (`hw/pinout.md`): display (wiring, offsets, colors), backlight and LED type/pin. All of it is changed in `include/mesp_board.h`.
+- **TuyaLink**: cloud OTA not implemented; `property/report_response` does not arrive in the EU region (nor for the spike), so the cloud's acceptance of each value cannot be confirmed from the device (only the PUBACK). Verify in the app that the values arrive and that `power_on` from the app turns the PC on.
+- **Power-on from S3/S4/S5 not validated** on the Lenovo (MESP-US-0002; the PC cannot be suspended in this environment). Real remote wakeup and forced resume have not been tested. WOL has not been tested with the PC off either.
+- **CLI security**: resolved with the release/dev variants. Still open:
+  - `!dfu` and the *1200-baud touch* allow reflashing from the PC (a conscious decision: recovery without the button).
+  - NVS is not encrypted (`CONFIG_NVS_ENCRYPTION`) and there is no *secure boot* / *flash encryption*: with physical access the agent key, the deviceSecret and the Wi-Fi password can be read.
+- **DP latency**: the `esp-mqtt` *outbox* is drained on each loop of its task (≤ ~1 s); on the board, the PUBACK of the first report arrives within the same second as the connection.
+- **`mhal_cdc_write`** can block the app task for up to ~1.5 s per line if a program opens the port and does not read. The software watchdog (60 s) covers a total hang.
+- **Internal heap** ~155 KB free with Wi-Fi, TLS and LVGL (no BLE).
+- **docs/ui.md**, final typefaces and icons, night dimming and 30 fps: phase B (MESP-US-0017/0018/0020).

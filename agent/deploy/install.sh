@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Instalador idempotente de microesp-agent (Linux + systemd).
+# Idempotent installer for microesp-agent (Linux + systemd).
 #
-#   sudo ./install.sh [--binary RUTA] [--no-start]
+#   sudo ./install.sh [--binary PATH] [--no-start]
 #   sudo ./install.sh --uninstall [--purge]
-#   ./install.sh --dry-run [...]        # muestra las acciones, no requiere root
+#   ./install.sh --dry-run [...]        # shows the actions, does not require root
 #
-# Busca el binario en: --binary, ../microesp-agent (tarball de release) o lo
-# compila con Go si se ejecuta desde el árbol de fuentes.
+# Looks for the binary in: --binary, ../microesp-agent (release tarball) or
+# builds it with Go when run from the source tree.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -34,13 +34,13 @@ usage() {
 }
 
 log() { printf '==> %s\n' "$*"; }
-warn() { printf 'AVISO: %s\n' "$*" >&2; }
+warn() { printf 'WARNING: %s\n' "$*" >&2; }
 die() {
 	printf 'ERROR: %s\n' "$*" >&2
 	exit 1
 }
 
-# run ejecuta un comando o, en --dry-run, solo lo muestra.
+# run executes a command or, with --dry-run, only prints it.
 run() {
 	if [ "$DRY_RUN" -eq 1 ]; then
 		printf '[dry-run]'
@@ -58,7 +58,7 @@ while [ $# -gt 0 ]; do
 	--purge) PURGE=1 ;;
 	--no-start) START=0 ;;
 	--binary)
-		[ $# -ge 2 ] || die "--binary necesita una ruta"
+		[ $# -ge 2 ] || die "--binary needs a path"
 		BINARY="$2"
 		shift
 		;;
@@ -66,13 +66,13 @@ while [ $# -gt 0 ]; do
 		usage
 		exit 0
 		;;
-	*) die "opción desconocida: $1 (usa --help)" ;;
+	*) die "unknown option: $1 (use --help)" ;;
 	esac
 	shift
 done
 
 if [ "$DRY_RUN" -eq 0 ] && [ "$(id -u)" -ne 0 ]; then
-	die "debe ejecutarse como root (sudo $0 ...) o con --dry-run"
+	die "must be run as root (sudo $0 ...) or with --dry-run"
 fi
 
 have() { command -v "$1" >/dev/null 2>&1; }
@@ -89,7 +89,7 @@ reload_udev() {
 
 resolve_binary() {
 	if [ -n "$BINARY" ]; then
-		[ -f "$BINARY" ] || die "no existe el binario $BINARY"
+		[ -f "$BINARY" ] || die "binary does not exist: $BINARY"
 		printf '%s\n' "$BINARY"
 		return
 	fi
@@ -105,20 +105,20 @@ resolve_binary() {
 			out="$(mktemp -d)/microesp-agent"
 		fi
 		version="$(git -C "$SRC_DIR" describe --tags --always --dirty 2>/dev/null || echo dev)"
-		log "compilando microesp-agent $version" >&2
+		log "building microesp-agent $version" >&2
 		run env CGO_ENABLED=0 go -C "$SRC_DIR" build -trimpath \
 			-ldflags "-s -w -X main.version=$version" -o "$out" ./cmd/microesp-agent >&2
 		printf '%s\n' "$out"
 		return
 	fi
-	die "no se encontró el binario: usa --binary RUTA o instala Go"
+	die "binary not found: use --binary PATH or install Go"
 }
 
 do_install() {
 	local bin
 	bin="$(resolve_binary)"
 
-	log "grupo $SVC_GROUP y usuario de servicio $SVC_USER"
+	log "group $SVC_GROUP and service user $SVC_USER"
 	if ! getent group "$SVC_GROUP" >/dev/null; then
 		run groupadd --system "$SVC_GROUP"
 	fi
@@ -130,56 +130,56 @@ do_install() {
 			--comment "MicroESP agent" "$SVC_USER"
 	fi
 
-	log "binario -> $PREFIX_BIN"
+	log "binary -> $PREFIX_BIN"
 	run install -D -m 0755 -o root -g root "$bin" "$PREFIX_BIN"
 
-	log "configuración en $CONF_DIR"
+	log "configuration in $CONF_DIR"
 	run install -d -m 0750 -o root -g "$SVC_USER" "$CONF_DIR"
 	if [ -e "$CONF_FILE" ]; then
-		log "se conserva $CONF_FILE existente"
+		log "keeping existing $CONF_FILE"
 	else
 		run install -m 0640 -o root -g "$SVC_USER" "$SCRIPT_DIR/agent.toml.example" "$CONF_FILE"
 	fi
 
-	log "reglas udev y polkit"
+	log "udev and polkit rules"
 	run install -D -m 0644 -o root -g root "$SCRIPT_DIR/udev/99-microesp.rules" "$UDEV_FILE"
 	reload_udev
 	if [ -d /etc/polkit-1/rules.d ] || [ "$DRY_RUN" -eq 1 ]; then
 		run install -D -m 0644 -o root -g root "$SCRIPT_DIR/polkit/50-microesp.rules" "$POLKIT_FILE"
 	else
-		warn "polkit no encontrado: el servicio no podrá apagar/reiniciar sin root"
+		warn "polkit not found: the service will not be able to power off/reboot without root"
 	fi
 
-	log "unidad systemd $SERVICE"
+	log "systemd unit $SERVICE"
 	run install -D -m 0644 -o root -g root "$SCRIPT_DIR/systemd/microesp-agent.service" "$UNIT_FILE"
 	if systemd_running || [ "$DRY_RUN" -eq 1 ]; then
 		run systemctl daemon-reload
 		if [ "$START" -eq 1 ]; then
 			run systemctl enable "$SERVICE"
-			# restart (no "start") para recoger un binario nuevo al reinstalar.
+			# restart (not "start") to pick up a new binary on reinstall.
 			run systemctl restart "$SERVICE"
 		else
 			run systemctl enable "$SERVICE"
 		fi
 	else
-		warn "systemd no está activo; habilita $SERVICE manualmente"
+		warn "systemd is not active; enable $SERVICE manually"
 	fi
 
 	if [ ! -e "$KEY_FILE" ]; then
 		cat <<EOF
 
-Instalación completada. Falta emparejar con el dongle:
+Installation complete. Pairing with the dongle is still needed:
   sudo systemctl stop $SERVICE
-  sudo $PREFIX_BIN pair          # introduce el código de 6 dígitos de la pantalla
+  sudo $PREFIX_BIN pair          # enter the 6-digit code shown on the screen
   sudo systemctl start $SERVICE
 EOF
 	else
-		log "instalación completada (clave existente en $KEY_FILE)"
+		log "installation complete (existing key in $KEY_FILE)"
 	fi
 }
 
 do_uninstall() {
-	log "desinstalando microesp-agent"
+	log "uninstalling microesp-agent"
 	if systemd_running || [ "$DRY_RUN" -eq 1 ]; then
 		if [ -e "$UNIT_FILE" ] || [ "$DRY_RUN" -eq 1 ]; then
 			run systemctl disable --now "$SERVICE" || true
@@ -200,9 +200,9 @@ do_uninstall() {
 	if [ "$PURGE" -eq 1 ]; then
 		run rm -rf "$CONF_DIR"
 	elif [ -d "$CONF_DIR" ]; then
-		log "se conserva $CONF_DIR (configuración y clave); usa --purge para borrarlo"
+		log "keeping $CONF_DIR (configuration and key); use --purge to remove it"
 	fi
-	log "desinstalación completada"
+	log "uninstall complete"
 }
 
 if [ "$UNINSTALL" -eq 1 ]; then

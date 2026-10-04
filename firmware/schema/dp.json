@@ -1,6 +1,6 @@
 {
   "product": "MicroESP",
-  "doc": "MicroESP thing model (docs/analisis/00-analisis-arquitectura.md section 5). Cloud protocol: TuyaLink (ADR-5). 'code' is the TuyaLink property code used on the wire; 'id' is the Tuya abilityId (sequential, as assigned by the platform; kept as the firmware's internal key and in the docs). Must stay in sync with src/core/dp_model.c (checked by test/host).",
+  "doc": "MicroESP thing model (docs/analysis/00-architecture-analysis.md section 5). Cloud protocol: TuyaLink (ADR-5). 'code' is the TuyaLink property code used on the wire; 'id' is the Tuya abilityId (sequential, as assigned by the platform; kept as the firmware's internal key and in the docs). Must stay in sync with src/core/dp_model.c (checked by test/host).",
   "tuyalink": {
     "topics": {
       "publish": [
