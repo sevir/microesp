@@ -2,7 +2,7 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [SemVer](https://semver.org/). Firmware and agent share the version number (tag `vX.Y.Z`, which must match `CONFIG_PROJECT_VERSION` in `firmware/app_default.config`).
 
-## [Unreleased] - 0.2.0
+## 0.2.0 - 2026-10-05
 
 ### Changed
 
