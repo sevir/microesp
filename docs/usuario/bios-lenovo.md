@@ -5,7 +5,7 @@ Historia: MESP-US-0030. Equipo de referencia: **Lenovo ThinkStation P3 Ultra SFF
 El dongle enciende el PC por dos vías:
 
 1. **Teclado USB (HID)**. En suspensión (S3) basta con el *remote wakeup* USB estándar. En hibernación (S4) y apagado (S5) la BIOS tiene que mantener alimentado y vigilado el puerto USB.
-2. **Wake-on-LAN (WOL)**: paquete mágico por la red local a las MACs que el agente comunica al dongle. Es el respaldo del método por defecto `hid_then_wol`.
+2. **Wake-on-LAN (WOL)**: paquete mágico por la red local a las MACs que el agente comunica al dongle. El método por defecto `hid_then_wol` lo envía **siempre junto con el HID** (y lo repite a los 20 s si el PC no ha arrancado).
 
 > **Estado de validación.** Esta guía todavía **no está validada en el equipo**. El spike MESP-US-0002 (matriz S3/S4/S5 × puerto × BIOS) sigue pendiente y no existe `docs/analisis/spike-wake.md`. Los nombres de los menús que aparecen abajo son los habituales en las BIOS de Lenovo ThinkStation/ThinkCentre (fuentes al final), pero **no se han comprobado en la P3 Ultra SFF G2**. Cuando hagas la prueba, apunta el nombre real de cada opción en la columna «Nombre real en este equipo» y el resultado en [`docs/qa/e2e-v1.md`](../qa/e2e-v1.md).
 

@@ -67,10 +67,10 @@ const char *wake_plan(wake_method_t m, const wake_usb_t *u)
                           ? "HID remote wakeup, then Alt+P when the bus resumes"
                           : "HID forced resume signalling, then Alt+P if the bus comes up (best effort)";
     if (m == WM_HID) return hid;
-    return up(u) ? "HID Alt+P, then WOL after 20 s without success"
+    return up(u) ? "HID Alt+P + WOL now, WOL again after 20 s without success"
            : (u->mounted && u->suspended && u->rwu_armed)
-               ? "HID remote wakeup + Alt+P, then WOL after 20 s without success"
-               : "HID forced resume + Alt+P, then WOL after 20 s without success";
+               ? "HID remote wakeup + Alt+P + WOL now, WOL again after 20 s without success"
+               : "HID forced resume + Alt+P + WOL now, WOL again after 20 s without success";
 }
 
 wake_rc_t wake_request(wake_t *w, wake_method_t m, const wake_usb_t *u, uint32_t now_ms)
@@ -98,6 +98,7 @@ wake_rc_t wake_request(wake_t *w, wake_method_t m, const wake_usb_t *u, uint32_t
         w->wol_sent = true;
     } else {
         hid_step(w, u, now_ms);
+        if (m == WM_HID_THEN_WOL && w->cb.wol_send) w->cb.wol_send(w->cb.ctx);
     }
     w->active = true;
     w->start_ms = now_ms;

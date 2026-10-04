@@ -45,7 +45,7 @@ Antes de cada caso: el PC en el estado indicado y el dongle conectado a la nube.
 | E2E-12 Encendido desde S4 (HID) | `systemctl hibernate` (si está configurado); app → Encender | Despierta, o N/A si no hay hibernación | | |
 | E2E-13 Encendido desde S5 (HID) | BIOS *Smart Power On* activado y dongle en el conector *smart power on*; `systemctl poweroff`; `wake_method=hid`; app → Encender | El dongle envía Alt+P y el PC arranca. Si no: `wake_failed` a los 120 s; anota si el puerto da 5 V en S5 y `hid_proto` en `!status` | | |
 | E2E-14 Encendido desde S5 (WOL) | `wake_method=wol`; apagar; app → Encender | Arranca por WOL | | |
-| E2E-15 Encendido desde S5 (`hid_then_wol`) | Método por defecto; apagar; app → Encender | Arranca (por HID o por WOL a los 20 s) | | |
+| E2E-15 Encendido desde S5 (`hid_then_wol`) | Método por defecto; apagar; app → Encender | Se envían Alt+P y WOL a la vez (WOL repetido a los 20 s); arranca | | |
 | E2E-16 Encender con el PC ya encendido | PC `on`; app → Encender | La orden se envía igualmente (Alt+P llega a la aplicación en primer plano); con el agente conectado se da por buena enseguida; el PC no se ve afectado | | |
 | E2E-17 Fallo de encendido | Desactivar el WOL en la NIC y apagar con el puerto sin alimentación; app → Encender | `wake_failed` y bit 1 de `fault` a los 120 s; se borra en el siguiente encendido correcto | | |
 

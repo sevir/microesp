@@ -59,18 +59,20 @@ static void test_bus_up_sends_alt_p(void)
     setup(1);
     TEST_ASSERT_EQUAL(WAKE_STARTED, wake_request(&W, WM_HID_THEN_WOL, &ON, 0));
     TEST_ASSERT_EQUAL(1, n_keys);
-    TEST_ASSERT_EQUAL(0, n_rwu + n_force + n_wol);
+    TEST_ASSERT_EQUAL(1, n_wol); /* WOL too, even though Alt+P was sent */
+    TEST_ASSERT_EQUAL(0, n_rwu + n_force);
     TEST_ASSERT_EQUAL(1, n_sent);
     TEST_ASSERT_NOT_NULL(strstr(wake_plan(WM_HID, &ON), "Alt+P"));
     /* still the same bus (no re-enumeration, no agent): not a success, Alt+P retried */
     for (uint32_t t = 100; t <= 10000; t += 100) wake_tick(&W, &ON, t);
     TEST_ASSERT_EQUAL(1 + WAKE_HID_RETRIES, n_keys);
     TEST_ASSERT_TRUE(W.active);
-    /* the PC boots: host controller re-enumerates the dongle -> success */
+    /* the PC boots: host controller re-enumerates the dongle -> success, no WOL repeat */
     wake_tick(&W, with_seq(ON, 1), 12000);
     TEST_ASSERT_EQUAL(1, n_ok);
     TEST_ASSERT_FALSE(W.active);
-    TEST_ASSERT_EQUAL(0, n_wol);
+    for (uint32_t t = 12000; t <= 30000; t += 1000) wake_tick(&W, &ON, t);
+    TEST_ASSERT_EQUAL(1, n_wol);
 }
 
 static void test_request_always_sent_even_with_agent(void)
@@ -135,12 +137,14 @@ static void test_hid_then_wol_and_timeout(void)
 {
     setup(2);
     wake_request(&W, WM_HID_THEN_WOL, &OFF, 0);
+    TEST_ASSERT_EQUAL(1, n_force);
+    TEST_ASSERT_EQUAL(1, n_wol); /* HID and WOL at once */
     for (uint32_t t = 100; t < WAKE_WOL_AFTER_MS; t += 100) wake_tick(&W, &OFF, t);
-    TEST_ASSERT_EQUAL(0, n_wol);
+    TEST_ASSERT_EQUAL(1, n_wol);
     wake_tick(&W, &OFF, WAKE_WOL_AFTER_MS);
-    TEST_ASSERT_EQUAL(1, n_wol);
+    TEST_ASSERT_EQUAL(2, n_wol); /* repeat */
     for (uint32_t t = WAKE_WOL_AFTER_MS; t < WAKE_TIMEOUT_MS; t += 1000) wake_tick(&W, &OFF, t);
-    TEST_ASSERT_EQUAL(1, n_wol);
+    TEST_ASSERT_EQUAL(2, n_wol);
     TEST_ASSERT_EQUAL(0, n_fail);
     wake_tick(&W, &OFF, WAKE_TIMEOUT_MS);
     TEST_ASSERT_EQUAL(1, n_fail);

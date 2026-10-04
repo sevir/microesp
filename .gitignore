@@ -2,6 +2,7 @@
 /.pando/data/
 /.pando/mesnada/logs/
 /.pando/mesnada/tasks.json
+.pando*
 
 # --- Salidas de compilación ---
 dist/

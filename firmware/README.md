@@ -257,14 +257,15 @@ Arranca en `unknown` y fija el primer estado a los 3 s.
 
 ## Encendido (US-0014)
 
-Si el PC ya está encendido (bus montado y no suspendido), la orden se ignora.
+La orden **nunca se ignora**, aunque el PC parezca encendido: con *Smart Power On* de Lenovo la BIOS mantiene el teclado enumerado en S5. Una orden durante un encendido en curso reenvía el paso HID.
 
-- **HID**:
-  - Bus suspendido y wakeup armado: `tud_remote_wakeup()`.
+- **HID** (3 intentos separados 2 s):
+  - Bus activo (montado y no suspendido): **Alt+P** (Smart Power On).
+  - Bus suspendido y wakeup armado: `tud_remote_wakeup()` y Alt+P al reanudarse.
   - No montado o no armado (S4/S5): señalización de resume forzada (estado K mediante `dcd_remote_wakeup` del DWC2), 3 intentos separados 2 s. Solo funciona si la BIOS vigila el puerto en S4/S5 ("Wake on USB" / "Always On USB"); falta validarlo en el Lenovo (MESP-US-0002).
 - **WOL**: paquete mágico por broadcast UDP a los puertos 9 y 7, a `255.255.255.255` y a la dirección de broadcast de la subred, para cada MAC recibida en el `hello` (como máximo 4, guardadas en NVS solo tras autenticar la sesión).
-- **`hid_then_wol`** (por defecto): HID y, si a los 20 s el bus no se ha montado, WOL.
-- **Resultado**: `last_result=wake_sent` al enviar. Si en 120 s el bus no se monta: `wake_failed` y bit `wake_failed`, que se borra con el siguiente encendido correcto.
+- **`hid_then_wol`** (por defecto; el nombre se mantiene por compatibilidad con el DP): HID **y** WOL a la vez, y otro WOL a los 20 s si no hay éxito. Sin MACs conocidas, solo HID.
+- **Resultado**: `last_result=wake_sent` al enviar. Éxito = el agente conecta, o el PC vuelve a enumerar el dongle (nuevo montaje/reanudación) después del último Alt+P. Sin éxito en 120 s: `wake_failed` y bit `wake_failed`, que se borra con el siguiente encendido correcto.
 
 ## Apagado / reinicio (US-0016)
 

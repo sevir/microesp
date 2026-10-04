@@ -48,6 +48,7 @@ flowchart LR
 | Ruta | Contenido |
 |---|---|
 | [`firmware/`](firmware/README.md) | Firmware de producción (app TuyaOpen v1.9.0 + componente ESP-IDF `mesp_hal`), board `POCKET_DONGLE_S3`, tests en el host |
+| [`panel/`](panel/README.md) | Panel MiniApp (Ray) para Smart Life conectado al modelo TuyaLink |
 | [`agent/`](agent/README.md) | Agente Go `microesp-agent`, instalador, unidades systemd, reglas udev/polkit e instalador de Windows |
 | [`protocol/`](protocol/testdata/vectors.json) | Vectores de prueba del protocolo cdc-v1 |
 | [`docs/`](docs/) | Documentación (en español): análisis, entorno de desarrollo, protocolo, guías de usuario y QA |

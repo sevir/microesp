@@ -153,7 +153,7 @@ Cuando todo funcione, vuelve a poner `dry_run = false`. El plan de pruebas compl
 | `cmd_rejected` | El agente rechazó o no confirmó la orden en 10 s. Revisa en `journalctl -u microesp-agent` si hay `bad_sig`/`replay`. |
 | `Access denied` / `interactive authentication required` al apagar | Falta la regla polkit, o hay un inhibidor activo (`systemd-inhibit --list`). |
 | `hid_not_armed` (bit 2 del DP 114) | El host suspendió el USB sin armar el remote wakeup: revisa `power/wakeup` ([`bios-lenovo.md` §3.1](bios-lenovo.md#31-permitir-que-el-dongle-despierte-el-equipo-s3)). |
-| `wake_failed` | En 120 s el PC no montó el bus USB. Revisa la BIOS (ErP, Always On USB), el WOL de la NIC y que el dongle tenga las MACs (`macs=` en `!status`). |
+| `wake_failed` | En 120 s el agente no conectó ni el PC volvió a enumerar el dongle. Revisa la BIOS (ErP, Always On USB), el WOL de la NIC y que el dongle tenga las MACs (`macs=` en `!status`). |
 | ModemManager envía `AT` al dongle | Falta la regla udev (`ID_MM_DEVICE_IGNORE`). Reinstala el agente. |
 | Recuperación total | Restaura el firmware de fábrica ([`docs/dev-setup.md` §6](../dev-setup.md#6-restaurar-el-firmware-de-fábrica)). |
 

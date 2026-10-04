@@ -12,7 +12,10 @@
  *         After a resume, Alt+P is tapped as soon as the bus comes up.
  *         The step is retried at +2 s and +4 s while not successful.
  *  - WOL: magic packet to every MAC learnt from hello (UDP broadcast 9 and 7).
- *  - hid_then_wol: HID, then WOL if not successful after 20 s.
+ *  - hid_then_wol (default; DP name kept for compatibility): HID AND WOL right away,
+ *    whatever the HID step did (a keyboard event the BIOS ignores is not an error the
+ *    dongle can see), and WOL once more after 20 s without success (UDP over Wi-Fi
+ *    may be lost). No known MAC -> HID only.
  *  - Success = agent online, or the bus came up through a NEW mount/resume edge
  *    (up_seq changed) after the last Alt+P was sent: the PC re-enumerated us.
  *    No success in 120 s -> last_result=wake_failed + fault bit wake_failed
@@ -29,7 +32,7 @@ extern "C" {
 
 typedef enum { WM_HID = 0, WM_WOL, WM_HID_THEN_WOL, WM__COUNT } wake_method_t;
 
-#define WAKE_WOL_AFTER_MS   20000
+#define WAKE_WOL_AFTER_MS   20000 /* hid_then_wol: WOL repeat */
 #define WAKE_TIMEOUT_MS     120000
 #define WAKE_HID_RETRY_MS   2000
 #define WAKE_HID_RETRIES    2
@@ -58,7 +61,7 @@ typedef struct {
     bool active;
     wake_method_t method;
     uint32_t start_ms;
-    bool wol_sent;
+    bool wol_sent;       /* wol: sent; hid_then_wol: the 20 s repeat was sent */
     bool keys_pending;   /* tap Alt+P as soon as the bus is up (after a resume) */
     bool keys_sent;
     uint32_t ref_seq;    /* up_seq at the start / when Alt+P was last sent */
