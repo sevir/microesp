@@ -1,7 +1,7 @@
 {
   "projectname": "MicroESP",
   "i18n": false,
-  "description": "microesp",
+  "description": "",
   "miniprogramRoot": "./dist/tuya",
   "devMode": "ray",
   "dependencies": {
@@ -10,5 +10,9 @@
     "DeviceKit": "4.6.1"
   },
   "baseversion": "2.27.0",
-  "compileType": "miniprogram"
+  "compileType": "miniprogram",
+  "uploadSourceMap": true,
+  "compilerOptions": {
+    "watchMode": "production"
+  }
 }
