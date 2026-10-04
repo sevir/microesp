@@ -1,91 +1,72 @@
-# Panel MicroESP (Ray)
+# MicroESP panel (Ray)
 
-Panel MiniApp para Smart Life hecho con [Ray](https://developer.tuya.com/en/miniapp/develop/ray/guide/start/quick-start). Sustituye al panel estándar del producto con el diseño del lienzo «Panel MicroESP»: estado del PC, encender, apagar y reiniciar con confirmación y cuenta atrás cancelable, telemetría y ajustes.
+Panel MiniApp for Smart Life built with [Ray](https://developer.tuya.com/en/miniapp/develop/ray/guide/start/quick-start). It replaces the product's standard panel with the "Panel MicroESP" design: PC state, power on, shut down and restart with confirmation and a cancellable countdown, telemetry and settings.
 
-## Cómo habla con el dispositivo
+It is the released panel of the MicroESP product. Building it in the Tuya MiniApp IDE (also on Linux, under Wine), previewing it on the phone and publishing new versions: [`docs/panel-publishing.md`](../docs/panel-publishing.md).
 
-El producto es **TuyaLink**, así que el panel usa el modelo de cosa y no los DPs clásicos:
+## How it talks to the device
 
-| Qué | API de Ray | Detalle |
+The product is **TuyaLink**, so the panel uses the thing model rather than classic DPs:
+
+| What | Ray API | Detail |
 |---|---|---|
-| Valores iniciales | `getDeviceInfo` | `dpCodes` (por código) y `dps` (por abilityId 101–114) |
-| Cambios | `subscribeReceivedThingModelMessage` + `onReceivedThingModelMessage` | Mensajes de propiedad (`type: 0`), valores sueltos o `{value, time}` |
-| Cambios (respaldo) | `onDpDataChange` | Por si la app también los entrega como DPs |
-| Escritura | `publishThingModelMessage` | `type: 0`, `payload: {<código>: valor}` = `thing/property/set` |
-| En línea | `getDeviceInfo().isOnline`, `onDeviceOnlineStatusUpdate` | Estado del dongle en la nube |
+| Initial values | `getDeviceInfo` | `dpCodes` (by code) and `dps` (by abilityId 101–114) |
+| Changes | `subscribeReceivedThingModelMessage` + `onReceivedThingModelMessage` | Property messages (`type: 0`), plain values or `{value, time}` |
+| Changes (fallback) | `onDpDataChange` | In case the app also delivers them as DPs |
+| Writes | `publishThingModelMessage` | `type: 0`, `payload: {<code>: value}` = `thing/property/set` |
+| Online | `getDeviceInfo().isOnline`, `onDeviceOnlineStatusUpdate` | Cloud state of the dongle |
 
-Los códigos, abilityIds, rangos y valores por defecto salen de [`firmware/schema/dp.json`](../firmware/schema/dp.json). `npm test` comprueba que [`src/device/model.ts`](src/device/model.ts) coincide con ese esquema.
+Codes, abilityIds, ranges and defaults come from [`firmware/schema/dp.json`](../firmware/schema/dp.json). `npm test` checks that [`src/device/model.ts`](src/device/model.ts) matches that schema.
 
-Semántica que respeta el panel (ver `dp.json`):
+Semantics the panel follows (see `dp.json`):
 
-- `power_on` es un pulsador: el panel envía `true` y el dongle lo devuelve a `false`.
-- `power_off` / `reboot` a `true` inician la cuenta atrás de `cmd_countdown`. Enviar `false` mientras cuenta la cancela. El dongle no informa del tiempo restante, así que el panel lo estima en local desde que ve el `true`.
-- Apagar y reiniciar solo se activan con `pc_state = on` y `agent_online = true`. El panel siempre pide confirmación antes.
-- La telemetría llega en décimas de porcentaje (`184` → 18,4 %).
-- `fault` es una máscara de bits. Cada bit activo muestra un aviso.
+- `power_on` is a push button: the panel sends `true` and the dongle sets it back to `false`.
+- `power_off` / `reboot` set to `true` start the `cmd_countdown` countdown. Sending `false` while it counts cancels it. The dongle does not report the time left, so the panel estimates it locally from when it sees the `true`.
+- Shut down and restart are only enabled with `pc_state = on` and `agent_online = true`. The panel always asks for confirmation first.
+- Telemetry arrives in tenths of a percent (`184` → 18.4 %).
+- `fault` is a bit mask. Each active bit shows a warning.
 
-## Estructura
+## Structure
 
 ```
 panel/
-├── project.tuya.json        # Kits y versión base de la MiniApp (devMode: ray)
+├── project.tuya.json        # MiniApp kits and base library version (devMode: ray)
 ├── src/
 │   ├── app.tsx
-│   ├── routes.config.ts     # Una sola página: pages/home
+│   ├── routes.config.ts     # A single page: pages/home
 │   ├── device/
-│   │   ├── model.ts         # Modelo de cosa: tipos, normalización, reglas (sin dependencias)
-│   │   └── useMicroEsp.ts   # Hook: estado en vivo y escritura por TuyaLink
-│   ├── strings/index.ts     # Textos es/en según el idioma de la app
-│   ├── components/          # Icon (SVG como data URI), ConfirmSheet
-│   ├── pages/home/          # Panel
-│   └── variables.less       # Paleta
-└── test/model.test.mjs      # Tests del modelo contra dp.json
+│   │   ├── model.ts         # Thing model: types, normalization, rules (no dependencies)
+│   │   └── useMicroEsp.ts   # Hook: live state and writes over TuyaLink
+│   ├── strings/index.ts     # es/en texts, chosen by the app language
+│   ├── components/          # Icon (SVG as data URI), ConfirmSheet
+│   ├── pages/home/          # The panel
+│   └── variables.less       # Palette
+├── scripts/
+│   ├── add-win-natives.sh   # npm run ide:win-natives
+│   └── ide-wine/            # Tuya MiniApp IDE under Wine: setup.sh, patch-ide.mjs, run-ide.sh
+└── test/model.test.mjs      # Model tests against dp.json
 ```
 
-> `src/devices` y `src/i18n` son nombres que raypack compila aparte con otra resolución de módulos, y la compilación falla. Por eso aquí se llaman `device` y `strings`.
+> raypack compiles `src/devices` and `src/i18n` separately with a different module resolution, and the build fails. That is why they are called `device` and `strings` here.
 
-## Desarrollo
+## Development
 
-Requisitos: Node ≥ 22.6, Tuya MiniApp IDE y una cuenta de la Tuya Developer Platform. `project.tuya.json` necesita `baseversion` ≥ 2.27.0 o el IDE no compila.
+Requirements: Node ≥ 22.6, the Tuya MiniApp IDE and a Tuya Developer Platform account. `project.tuya.json` needs `baseversion` ≥ 2.27.0 or the IDE does not compile.
 
 ```bash
 cd panel
 npm install
-npm test             # modelo frente a firmware/schema/dp.json
+npm test                  # model against firmware/schema/dp.json
 npm run typecheck
-npm run build:tuya   # genera dist/tuya
+npm run build:tuya        # writes dist/tuya
+npm run ide:win-natives   # only for the IDE under Wine, after each npm install
 ```
 
-### El IDE en Linux (Wine)
+The `typings/tuya*` folders are generated by the IDE when it imports the project and are not versioned.
 
-Tuya solo publica el MiniApp IDE para Windows y macOS. En Linux funciona la versión de Windows bajo Wine con estos ajustes (montaje local en `/www/MicroESP/tools/tuya-ide/`, ver su `README.txt`):
+Checked with the real device: `getDeviceInfo` delivers the properties in `dps` keyed by abilityId (`"101"`…`"114"`), which the panel merges with `mergeDps`.
 
-- La aplicación se extrae del instalador NSIS (`$PLUGINSDIR/app-64.7z`) a un prefijo propio. El instalador falla bajo Wine.
-- Node para Windows en el prefijo y en su `PATH`.
-- El IDE compila lanzando `npx ray build` en una terminal PowerShell, y en Wine `powershell.exe` no hace nada. Hay que parchear `rayBuild()` en `@ark/miniapp-compiler` para que ejecute `node node_modules/@ray-js/cli/bin/ray build …` directamente.
-- `node_modules` instalado en Linux solo trae los binarios nativos de Linux. Tras cada `npm install`, ejecuta `npm run ide:win-natives` para añadir los de Windows (esbuild, lightningcss, oxc, tailwind oxide).
+Still to check:
 
-Las carpetas `typings/tuya*` las genera el IDE al importar el proyecto y no se versionan.
-
-## Probarlo en el móvil
-
-1. En el IDE, **Account** (arriba a la derecha) muestra un QR. Escanéalo con Smart Life (**+ → Escanear**) usando la cuenta dueña del dispositivo.
-2. **Plugins → Panel Tools → debug real device** y elige el dispositivo.
-3. **Preview** genera otro QR. Escanéalo con Smart Life y se abre el panel con el dispositivo real, sin cambiar el panel que ve el producto.
-
-Apagar y Reiniciar actúan de verdad: para probar la orden, confirma y cancela durante la cuenta atrás.
-
-## Publicarlo en Smart Life
-
-1. En la Smart MiniApp Developer Platform crea una **Panel MiniApp**.
-2. En el MiniApp IDE importa la carpeta `panel/` y vincula el **producto** TuyaLink de MicroESP y la MiniApp del paso 1.
-3. Sube la versión desde el IDE. En la plataforma de MiniApps, en **gestión de versiones**, pide la revisión y, una vez aprobada, actívala como versión online.
-4. En la plataforma de IoT, en el producto, cambia el panel por esta MiniApp.
-
-Comprobado con el dispositivo real: `getDeviceInfo` entrega las propiedades en `dps` con claves de abilityId (`"101"`…`"114"`), que el panel mezcla con `mergeDps`.
-
-Pendiente de comprobar:
-
-- si `getDeviceInfo` rellena también `dpCodes` en productos TuyaLink;
-- la forma exacta del `payload` de `onReceivedThingModelMessage`. El modelo acepta valores sueltos y `{value, time}`;
-- si la publicación exige verificar la organización, como pasó con las licencias de TuyaOS.
+- whether `getDeviceInfo` also fills `dpCodes` for TuyaLink products;
+- the exact `payload` shape of `onReceivedThingModelMessage`. The model accepts plain values and `{value, time}`.

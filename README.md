@@ -1,84 +1,85 @@
 # MicroESP
 
-MicroESP convierte un dongle USB **ESP32-S3** (Pocket-Dongle-S3, clon de LilyGO T-Dongle-S3) en un **mando remoto de encendido para el PC** controlable desde la app **Tuya / Smart Life**:
+MicroESP turns an **ESP32-S3** USB dongle (Pocket-Dongle-S3, a clone of the LilyGO T-Dongle-S3) into a **remote power switch for your PC**, controlled from the **Tuya / Smart Life** app:
 
-- **Encender** el PC desde la app: el dongle se presenta como teclado USB y lo despierta (remote wakeup / señal de *resume*), con **Wake-on-LAN** como respaldo.
-- **Apagar o reiniciar** con cuenta atrás cancelable (botón del dongle o la app). La orden llega firmada al agente del PC, que la ejecuta sin privilegios mediante polkit.
-- **Ver el estado** del PC (encendido, suspendido, apagado, sin agente) y su **telemetría** (CPU, memoria, disco libre, uptime, hostname) en la app y en la pantalla del dongle.
+- **Power on** the PC from the app: the dongle presents itself as a USB keyboard and wakes the PC (remote wakeup / *resume* signal), with **Wake-on-LAN** as a fallback.
+- **Shut down or reboot** with a cancellable countdown (dongle button or the app). The command reaches the PC agent signed, and the agent runs it without privileges through polkit.
+- **See the PC state** (on, suspended, off, no agent) and its **telemetry** (CPU, memory, free disk, uptime, hostname) in the app and on the dongle screen.
 
-PC de referencia: Lenovo ThinkStation P3 Ultra SFF G2 con Linux (Pop!_OS / Ubuntu 24.04). El agente también funciona en Windows 10/11 (opcional).
+Reference PC: Lenovo ThinkStation P3 Ultra SFF G2 running Linux (Pop!_OS / Ubuntu 24.04). The agent also works on Windows 10/11 (optional).
 
-> Estado: versión **0.1.0** (sin publicar). Ver [`CHANGELOG.md`](CHANGELOG.md).
+> Status: version **0.1.0** (unreleased). See [`CHANGELOG.md`](CHANGELOG.md).
 
-## Arquitectura
+## Architecture
 
 ```mermaid
 flowchart LR
-    App["App Smart Life / Tuya"] <-- "DPs 101–115 (MQTT)" --> Cloud["Nube Tuya"]
+    App["Smart Life / Tuya app"] <-- "DPs 101–115 (MQTT)" --> Cloud["Tuya cloud"]
     Cloud <-- "Wi-Fi (TuyaOpen)" --> Dongle
 
-    subgraph Dongle["Dongle MicroESP (ESP32-S3, firmware TuyaOpen + ESP-IDF)"]
+    subgraph Dongle["MicroESP dongle (ESP32-S3, TuyaOpen + ESP-IDF firmware)"]
         direction TB
-        FW["Tarea mesp_app<br/>estado · DPs · power · wake"]
-        HID["USB HID teclado<br/>(remote wakeup)"]
-        CDC["USB CDC ACM<br/>(protocolo cdc-v1)"]
-        UI["LCD ST7735 · LED · botón"]
+        FW["mesp_app task<br/>state · DPs · power · wake"]
+        HID["USB HID keyboard<br/>(remote wakeup)"]
+        CDC["USB CDC ACM<br/>(cdc-v1 protocol)"]
+        UI["ST7735 LCD · LED · button"]
         FW --- HID
         FW --- CDC
         FW --- UI
     end
 
     subgraph PC["PC (Linux / Windows)"]
-        Agent["microesp-agent<br/>(Go, servicio systemd)"]
+        Agent["microesp-agent<br/>(Go, systemd service)"]
         OS["logind / polkit<br/>poweroff · reboot"]
-        NIC["NIC con Wake-on-LAN"]
-        Agent -- "orden firmada (HMAC)" --> OS
+        NIC["NIC with Wake-on-LAN"]
+        Agent -- "signed command (HMAC)" --> OS
     end
 
-    HID -- "despertar S3 / S4 / S5" --> PC
+    HID -- "wake from S3 / S4 / S5" --> PC
     CDC <-- "hello/auth · tele · hb · cmd/ack" --> Agent
-    Dongle -. "paquete mágico WOL (UDP)" .-> NIC
+    Dongle -. "WOL magic packet (UDP)" .-> NIC
 ```
 
-- El dongle y el agente comparten una clave de 32 bytes, derivada con HKDF a partir de un **código de 6 dígitos** que muestra la pantalla al emparejar. Las órdenes de apagado o reinicio van firmadas con HMAC-SHA256, llevan nonces de sesión y un id creciente que impide repetirlas.
-- El protocolo agente ↔ dongle está en [`docs/protocol/cdc-v1.md`](docs/protocol/cdc-v1.md). Sus vectores normativos ([`protocol/testdata/vectors.json`](protocol/testdata/vectors.json)) los usan los tests del agente y del firmware.
+- The dongle and the agent share a 32-byte key, derived with HKDF from a **6-digit code** shown on the screen during pairing. Shutdown and reboot commands are signed with HMAC-SHA256 and carry session nonces and an increasing id that prevents replays.
+- The agent ↔ dongle protocol is described in [`docs/protocol/cdc-v1.md`](docs/protocol/cdc-v1.md). Its normative vectors ([`protocol/testdata/vectors.json`](protocol/testdata/vectors.json)) are used by the agent and firmware tests.
 
-## Estructura del repositorio
+## Repository layout
 
-| Ruta | Contenido |
+| Path | Contents |
 |---|---|
-| [`firmware/`](firmware/README.md) | Firmware de producción (app TuyaOpen v1.9.0 + componente ESP-IDF `mesp_hal`), board `POCKET_DONGLE_S3`, tests en el host |
-| [`panel/`](panel/README.md) | Panel MiniApp (Ray) para Smart Life conectado al modelo TuyaLink |
-| [`agent/`](agent/README.md) | Agente Go `microesp-agent`, instalador, unidades systemd, reglas udev/polkit e instalador de Windows |
-| [`protocol/`](protocol/testdata/vectors.json) | Vectores de prueba del protocolo cdc-v1 |
-| [`docs/`](docs/) | Documentación (en español): análisis, entorno de desarrollo, protocolo, guías de usuario y QA |
-| `hw/` | Pinout, spikes de hardware y copia de seguridad del firmware de fábrica (ignorada por git) |
-| `scripts/` | Utilidades: acceso al puerto serie, dependencias de CI |
-| `.github/workflows/` | CI (agente, tests del firmware, compilación del firmware, gitleaks, shellcheck) y release |
+| [`firmware/`](firmware/README.md) | Production firmware (TuyaOpen v1.9.0 app + ESP-IDF component `mesp_hal`), board `POCKET_DONGLE_S3`, host tests |
+| [`panel/`](panel/README.md) | Panel MiniApp (Ray) for Smart Life connected to the TuyaLink model |
+| [`agent/`](agent/README.md) | Go agent `microesp-agent`, installer, systemd units, udev/polkit rules and Windows installer |
+| [`protocol/`](protocol/testdata/vectors.json) | Test vectors for the cdc-v1 protocol |
+| [`docs/`](docs/) | Documentation: analysis, development setup, protocol, user guides and QA |
+| `hw/` | Pinout, hardware spikes and backup of the factory firmware (ignored by git) |
+| `scripts/` | Utilities: serial port access, CI dependencies |
+| `.github/workflows/` | CI (agent, firmware tests, firmware build, gitleaks, shellcheck) and release |
 
-## Puesta en marcha rápida
+## Quick start
 
-1. **Entorno de desarrollo** (TuyaOpen, ESP-IDF y Go): [`docs/dev-setup.md`](docs/dev-setup.md).
-2. **Compilar y flashear el firmware**: [`firmware/README.md`](firmware/README.md).
+1. **Development environment** (TuyaOpen, ESP-IDF and Go): [`docs/dev-setup.md`](docs/dev-setup.md).
+2. **Build and flash the firmware**: [`firmware/README.md`](firmware/README.md).
    ```bash
    cd firmware && ./build.sh && sg dialout -c tools/flash.sh
    ```
-3. **Instalación completa para el usuario** (flasheo, credenciales Tuya, Smart Life, agente y emparejado): [`docs/usuario/instalacion.md`](docs/usuario/instalacion.md).
-4. **BIOS y sistema operativo para que funcione el encendido**: [`docs/usuario/bios-lenovo.md`](docs/usuario/bios-lenovo.md).
-5. **Agente del PC**: [`agent/README.md`](agent/README.md).
+3. **Full user installation** (flashing, Tuya credentials, Smart Life, agent and pairing): [`docs/user/installation.md`](docs/user/installation.md).
+4. **BIOS and operating system setup so that power-on works**: [`docs/user/bios-lenovo.md`](docs/user/bios-lenovo.md).
+5. **PC agent**: [`agent/README.md`](agent/README.md).
    ```bash
    sudo agent/deploy/install.sh
    sudo systemctl stop microesp-agent && sudo microesp-agent pair && sudo systemctl start microesp-agent
    ```
-6. **Pruebas de extremo a extremo**: [`docs/qa/e2e-v1.md`](docs/qa/e2e-v1.md).
+6. **Smart Life panel** (build in the Tuya MiniApp IDE, also on Linux under Wine, and publish): [`docs/panel-publishing.md`](docs/panel-publishing.md).
+7. **End-to-end tests**: [`docs/qa/e2e-v1.md`](docs/qa/e2e-v1.md).
 
-## Desarrollo y CI
+## Development and CI
 
 ```bash
-make -C agent lint test cover     # agente: vet (linux+windows), staticcheck, gofmt, tests -race
-firmware/build.sh test            # firmware: 59 tests Unity con ASan/UBSan, sin toolchain de ESP
+make -C agent lint test cover     # agent: vet (linux+windows), staticcheck, gofmt, tests -race
+firmware/build.sh test            # firmware: 59 Unity tests with ASan/UBSan, no ESP toolchain
 ```
 
-GitHub Actions (`.github/workflows/ci.yml`) ejecuta estos jobs en cada push o PR: `agent`, `firmware-host-tests`, `firmware-build` (TuyaOpen fijado a `b80932d`, con credenciales de relleno), `secrets` (gitleaks, [`.gitleaks.toml`](.gitleaks.toml)) y `shell` (shellcheck). Una etiqueta `vX.Y.Z` (`release.yml`) publica el agente para linux-amd64, linux-arm64 y windows-amd64 y el firmware (imagen fusionada y app), junto con un `SHA256SUMS` común.
+GitHub Actions (`.github/workflows/ci.yml`) runs these jobs on every push or PR: `agent`, `firmware-host-tests`, `firmware-build` (TuyaOpen pinned to `b80932d`, with placeholder credentials), `secrets` (gitleaks, [`.gitleaks.toml`](.gitleaks.toml)) and `shell` (shellcheck). A `vX.Y.Z` tag (`release.yml`) publishes the agent for linux-amd64, linux-arm64 and windows-amd64 and the firmware (merged image and app), together with a common `SHA256SUMS`.
 
-**Secretos**: las credenciales de TuyaLink (deviceSecret) y la contraseña Wi-Fi solo se cargan en la NVS del dongle por la CLI (`!tylink`, `!wifi`); la clave del agente (`*.key`) y las copias de la flash de fábrica nunca se suben al repositorio (ver [`.gitignore`](.gitignore)).
+**Secrets**: the TuyaLink credentials (deviceSecret) and the Wi-Fi password are loaded into the dongle's NVS only through the CLI (`!tylink`, `!wifi`); the agent key (`*.key`) and the factory flash backups are never committed to the repository (see [`.gitignore`](.gitignore)).

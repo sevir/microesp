@@ -1,61 +1,64 @@
 # Changelog
 
-Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). Versionado [SemVer](https://semver.org/lang/es/). Firmware y agente comparten el número de versión (etiqueta `vX.Y.Z`, que debe coincidir con `CONFIG_PROJECT_VERSION` de `firmware/app_default.config`).
+Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [SemVer](https://semver.org/). Firmware and agent share the version number (tag `vX.Y.Z`, which must match `CONFIG_PROJECT_VERSION` in `firmware/app_default.config`).
 
-## [Sin publicar] - 0.2.0
+## [Unreleased] - 0.2.0
 
-### Cambiado
+### Changed
 
-- **Encendido siempre enviado y Alt+P (Lenovo Smart Power On).** Con *Smart Power On* la BIOS mantiene enumerado el teclado en S5 y el dongle creía que el PC estaba encendido, así que ignoraba la orden. Ahora la orden de encendido (app, botón, `!wake force`) se envía siempre: con el bus activo pulsa Alt+P; suspendido, *remote wakeup* y Alt+P al reanudarse; sin montar, *resume* forzado; con 2 reintentos y el WOL según `wake_method`. Éxito = agente en línea o nueva enumeración del dongle tras el Alt+P. Una orden durante un encendido en curso reenvía el paso HID. El método por defecto `hid_then_wol` envía ahora el WOL **a la vez** que el HID (y lo repite a los 20 s sin éxito), en lugar de solo cuando el HID no funciona: el dongle no puede saber si la BIOS ignoró el Alt+P. `mhal_hid_tap` espera a que el host lea el informe antes de soltar la tecla (evita teclas pegadas con hosts lentos). `!status` muestra `hid_proto`.
-- **Nube: TuyaLink en lugar de TuyaOS** (ADR-5). Las licencias TuyaOS (UUID/AuthKey) no se pueden conseguir. El firmware deja de usar el cliente `tuya_iot` de TuyaOpen y habla TuyaLink (MQTT 3.1.1 sobre TLS, puerto 8883, verificación del servidor con el bundle de CAs de ESP-IDF) con un cliente propio sobre `esp-mqtt`:
-  - firma HMAC-SHA256 del usuario/contraseña con la hora de SNTP en cada intento; reconexión con espera 2, 4, 8, 16 y 32 s y luego cada 120 s;
-  - `property/report` con los códigos del modelo de cosa (enums como cadena, `fault` como entero), un reporte en vuelo confirmado por PUBACK, mismos umbrales y throttling, todo reportado en cada conexión;
-  - `property/set` con varias propiedades, validación una a una y respuesta `property/set_response`; `action/execute` responde error (sin acciones); `model/get` en cada conexión.
-  - TuyaOpen se mantiene como marco (RTOS, LVGL, compilación). Imagen de 1,59 a 1,36 MB y ~90 KB más de heap interno (sin BLE ni `tuya_iot`).
-- **Aprovisionamiento** por la CLI del CDC: `!tylink <región> <productId> <deviceId> <deviceSecret>` y `!wifi <ssid> <contraseña...>` (la contraseña es el resto de la línea), en NVS, con la política release de antes (solo sin aprovisionar o en la ventana de 120 s del botón de 5 s; en desarrollo siempre, y `!tylink clear` / `!wifi clear`).
-- `!status` muestra región, productId, deviceId enmascarado, estado de Wi-Fi/MQTT/SNTP, último error, reportes y órdenes recibidas, sin secretos.
-- El fallo `cloud_lost` también se activa si la nube nunca llega a conectar (60 s desde el arranque).
-- El censor de logs cubre ahora las líneas de ESP-IDF (Wi-Fi, MQTT, TLS) y registra el deviceSecret, la contraseña Wi-Fi y la contraseña MQTT de cada intento.
+- **Documentation and comments in English.** `docs/usuario/` is now `docs/user/` (`instalacion.md` → `installation.md`) and `docs/analisis/` is now `docs/analysis/` (`00-architecture-analysis.md`). Product UI text (dongle screen, agent CLI output, panel strings) is unchanged.
+- **Power-on always sent, and Alt+P (Lenovo Smart Power On).** With *Smart Power On* the BIOS keeps the keyboard enumerated in S5, so the dongle believed the PC was on and ignored the command. Now the power-on command (app, button, `!wake force`) is always sent: with the bus active it taps Alt+P; when suspended, *remote wakeup* and Alt+P on resume; when not mounted, forced *resume*; with 2 retries and WOL according to `wake_method`. Success = agent online or the dongle re-enumerating after the Alt+P. A command during a power-on in progress resends the HID step. The default method `hid_then_wol` now sends WOL **at the same time** as HID (and repeats it after 20 s without success), instead of only when HID fails: the dongle cannot know whether the BIOS ignored the Alt+P. `mhal_hid_tap` waits for the host to read the report before releasing the key (avoids stuck keys with slow hosts). `!status` shows `hid_proto`.
+- **Cloud: TuyaLink instead of TuyaOS** (ADR-5). TuyaOS licenses (UUID/AuthKey) cannot be obtained. The firmware stops using TuyaOpen's `tuya_iot` client and speaks TuyaLink (MQTT 3.1.1 over TLS, port 8883, server verification with the ESP-IDF CA bundle) with its own client on top of `esp-mqtt`:
+  - HMAC-SHA256 signature of the username/password with the SNTP time on every attempt; reconnection with 2, 4, 8, 16 and 32 s waits and then every 120 s;
+  - `property/report` with the thing-model codes (enums as strings, `fault` as an integer), one report in flight confirmed by PUBACK, same thresholds and throttling, everything reported on every connection;
+  - `property/set` with several properties, validated one by one and answered with `property/set_response`; `action/execute` answers with an error (no actions); `model/get` on every connection.
+  - TuyaOpen is kept as the framework (RTOS, LVGL, build). Image from 1.59 to 1.36 MB and ~90 KB more internal heap (no BLE or `tuya_iot`).
+- **Provisioning** through the CDC CLI: `!tylink <region> <productId> <deviceId> <deviceSecret>` and `!wifi <ssid> <password...>` (the password is the rest of the line), stored in NVS, with the same release policy as before (only when unprovisioned or within the 120 s window of the 5 s button press; always in development, plus `!tylink clear` / `!wifi clear`).
+- `!status` shows region, productId, masked deviceId, Wi-Fi/MQTT/SNTP state, last error, reports and commands received, without secrets.
+- The `cloud_lost` fault is also raised if the cloud never manages to connect (60 s after boot).
+- The log censor now covers ESP-IDF lines (Wi-Fi, MQTT, TLS) and registers the deviceSecret, the Wi-Fi password and the MQTT password of each attempt.
 
-### Eliminado
+### Removed
 
-- Emparejado BLE/AP con Smart Life, `!auth`, `!pid` y `!reset-tuya` (responden "not used with TuyaLink"), `include/tuya_secrets.h(.example)`, el reset de Tuya con el botón (10-20 s ya no hace nada) y la CLI de TuyaOpen en UART0.
-- OTA por la nube (la hacía `tuya_iot`): pendiente con los topics OTA de TuyaLink; actualización por USB.
+- BLE/AP pairing with Smart Life, `!auth`, `!pid` and `!reset-tuya` (they answer "not used with TuyaLink"), `include/tuya_secrets.h(.example)`, the Tuya reset with the button (10-20 s no longer does anything) and the TuyaOpen CLI on UART0.
+- OTA through the cloud (it was done by `tuya_iot`): pending with the TuyaLink OTA topics; update over USB.
 
-### Añadido
+### Added
 
-- **Panel propio para Smart Life** (`panel/`, Panel MiniApp con Ray): estado del PC, encender, apagar y reiniciar con confirmación y cuenta atrás cancelable, telemetría, avisos de `fault` y ajustes (`wake_method`, `cmd_countdown`). Lee y escribe por el modelo de cosa de TuyaLink (`publishThingModelMessage`, `onReceivedThingModelMessage`), con textos en español e inglés. Los tests (`npm test`) comprueban el modelo frente a `firmware/schema/dp.json`. Falta probarlo en el MiniApp IDE con el dispositivo real y publicarlo.
-- `src/core/tylink.c` (TuyaLink en C puro) y 14 tests nuevos en el host (80 en total): vectores HMAC calculados con Python, JSON de reporte y respuestas, `property/set` con varias propiedades, códigos desconocidos, tipos incorrectos, fuera de rango, mensajes malformados y truncados; análisis de `!wifi` y comandos obsoletos.
+- **Panel build and publishing guide** ([`docs/panel-publishing.md`](docs/panel-publishing.md)): the Tuya MiniApp IDE on Linux, phone preview, and the create panel → link in the IDE → upload → review → release → select on the product flow.
+- **Tuya MiniApp IDE under Wine** (`panel/scripts/ide-wine/`): `setup.sh` unpacks the Windows IDE from its installer, installs Node for Windows in the prefix and applies `patch-ide.mjs`, which makes the IDE run the Ray CLI directly instead of through PowerShell (a stub under Wine); `run-ide.sh` launches it. `npm run ide:win-natives` adds the Windows native packages the IDE build needs.
+- **Own panel for Smart Life** (`panel/`, Panel MiniApp with Ray): PC state, power on, shut down and reboot with confirmation and cancellable countdown, telemetry, `fault` warnings and settings (`wake_method`, `cmd_countdown`). It reads and writes through the TuyaLink thing model (`publishThingModelMessage`, `onReceivedThingModelMessage`), with texts in Spanish and English. The tests (`npm test`) check the model against `firmware/schema/dp.json`. Tested with the real device and released: it is the product panel in Smart Life.
+- `src/core/tylink.c` (TuyaLink in plain C) and 14 new host tests (80 in total): HMAC vectors computed with Python, report JSON and responses, `property/set` with several properties, unknown codes, wrong types, out of range, malformed and truncated messages; `!wifi` parsing and obsolete commands.
 
-### Corregido
+### Fixed
 
-- `schema/dp.json`: los ids de la política de reporte seguían la numeración antigua (106-108/111); ahora 105-107/110.
+- `schema/dp.json`: the report policy ids still followed the old numbering (106-108/111); now 105-107/110.
 
 ## 0.1.0
 
-### Añadido
+### Added
 
-- **Firmware** (TuyaOpen v1.9.0 / ESP-IDF v5.4, board `POCKET_DONGLE_S3` de 16 MB):
-  - dispositivo USB compuesto HID teclado + CDC ACM con *remote wakeup*;
-  - encendido por HID con Wake-on-LAN de respaldo (`hid_then_wol`);
-  - apagado y reinicio con cuenta atrás cancelable;
-  - máquina de estados del PC (DP 101) y DPs 101–115 (salvo el 105);
-  - emparejado BLE/AP con Smart Life;
-  - OTA con rollback;
-  - botón (gestos), LED de estado y pantalla ST7735 con LVGL (versión básica);
-  - CLI por el CDC y redes de seguridad para reflashear sin BOOT.
-- **Protocolo cdc-v1** (`docs/protocol/cdc-v1.md`): sesión autenticada con HMAC-SHA256, emparejado con código de 6 dígitos (HKDF) y vectores normativos en `protocol/testdata/vectors.json`.
-- **Agente** `microesp-agent` (Go):
-  - telemetría (CPU, memoria, disco libre, uptime, hostname, MACs) y latido;
-  - ejecución de las órdenes firmadas mediante systemd/logind con polkit mínimo;
-  - instalador idempotente con udev, polkit y unidad systemd con sandbox;
-  - servicio de Windows opcional.
-- **Tests**: 59 tests Unity del núcleo del firmware en el host (ASan/UBSan) y tests del agente con `-race`.
-- **CI** (GitHub Actions): vet/staticcheck/gofmt/tests del agente, tests del firmware en el host, compilación del firmware, gitleaks y shellcheck. La release por etiqueta usa goreleaser y publica un `SHA256SUMS` común.
-- **Documentación**: README raíz, guía de instalación, guía de BIOS/SO para el Lenovo ThinkStation P3 Ultra SFF G2 y plan de pruebas E2E.
+- **Firmware** (TuyaOpen v1.9.0 / ESP-IDF v5.4, 16 MB `POCKET_DONGLE_S3` board):
+  - composite USB device HID keyboard + CDC ACM with *remote wakeup*;
+  - power-on by HID with Wake-on-LAN fallback (`hid_then_wol`);
+  - shutdown and reboot with cancellable countdown;
+  - PC state machine (DP 101) and DPs 101–115 (except 105);
+  - BLE/AP pairing with Smart Life;
+  - OTA with rollback;
+  - button (gestures), status LED and ST7735 screen with LVGL (basic version);
+  - CLI over CDC and safety nets to reflash without BOOT.
+- **cdc-v1 protocol** (`docs/protocol/cdc-v1.md`): session authenticated with HMAC-SHA256, pairing with a 6-digit code (HKDF) and normative vectors in `protocol/testdata/vectors.json`.
+- **Agent** `microesp-agent` (Go):
+  - telemetry (CPU, memory, free disk, uptime, hostname, MACs) and heartbeat;
+  - execution of signed commands through systemd/logind with minimal polkit;
+  - idempotent installer with udev, polkit and a sandboxed systemd unit;
+  - optional Windows service.
+- **Tests**: 59 Unity tests of the firmware core on the host (ASan/UBSan) and agent tests with `-race`.
+- **CI** (GitHub Actions): agent vet/staticcheck/gofmt/tests, firmware host tests, firmware build, gitleaks and shellcheck. The tag release uses goreleaser and publishes a common `SHA256SUMS`.
+- **Documentation**: root README, installation guide, BIOS/OS guide for the Lenovo ThinkStation P3 Ultra SFF G2 and E2E test plan.
 
-### Pendiente
+### Pending
 
-- Validar el encendido desde S4/S5 en el Lenovo (MESP-US-0002) y ejecutar el plan E2E (`docs/qa/e2e-v1.md`).
-- PID y credenciales reales de Tuya; OTA real desde la plataforma Tuya.
-- Pulido de la interfaz (fase B) y medida de VBUS (DP 105).
+- Validate power-on from S4/S5 on the Lenovo (MESP-US-0002) and run the E2E plan (`docs/qa/e2e-v1.md`).
+- Real Tuya PID and credentials; real OTA from the Tuya platform.
+- Interface polish (phase B) and VBUS measurement (DP 105).

@@ -20,9 +20,9 @@ add() { # <target dir> <package> <version>
 }
 
 while read -r linux win; do
-  for d in $(find node_modules -type d -path "*/$linux" -not -path "*/.cache/*"); do
+  while IFS= read -r d <&3; do
     add "${d%"$linux"}$win" "$win" "$(ver "$d")"
-  done
+  done 3< <(find node_modules -type d -path "*/$linux" -not -path "*/.cache/*")
 done <<'LIST'
 @esbuild/linux-x64 @esbuild/win32-x64
 lightningcss-linux-x64-gnu lightningcss-win32-x64-msvc
