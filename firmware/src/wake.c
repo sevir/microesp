@@ -8,6 +8,12 @@
  * (dcd_remote_wakeup), 3 attempts 2 s apart. It only works if the BIOS/chipset
  * monitors the port in S4/S5 ("Wake on USB / keyboard", "Always On USB"); not yet
  * validated on the Lenovo (MESP-US-0002). WOL is the reliable fallback.
+ *
+ * Lenovo "Smart Power On" (BIOS Power -> Smart Power On, rear USB-A port marked for it):
+ * the BIOS/EC keeps the keyboard enumerated in S4/S5 and powers on with Alt+P. The
+ * dongle then sees a running bus although the PC is off, so every power-on request
+ * taps Alt+P when the bus is up, whatever pc_state says (ThinkStation P3 Ultra user
+ * guide, "Enable or disable the smart power-on feature").
  */
 #include <string.h>
 
@@ -29,6 +35,16 @@ static int cb_force(void *c)
 {
     int rc = mhal_hid_force_resume();
     PR_NOTICE("wake: HID forced resume signalling -> %d", rc);
+    return rc;
+}
+
+#define HID_MOD_LEFTALT 0x04
+#define HID_USAGE_P     0x13
+
+static int cb_keys(void *c)
+{
+    int rc = mhal_hid_tap(HID_MOD_LEFTALT, HID_USAGE_P);
+    PR_NOTICE("wake: HID Alt+P (Smart Power On) -> %d", rc);
     return rc;
 }
 
@@ -60,7 +76,7 @@ static void cb_done(void *c, bool ok)
 
 void wake_mod_init(void)
 {
-    wake_cbs_t cb = {cb_rwu, cb_force, cb_wol, cb_sent, cb_done, NULL};
+    wake_cbs_t cb = {cb_rwu, cb_force, cb_keys, cb_wol, cb_sent, cb_done, NULL};
     wake_init(&g_app.wake, &cb);
     uint8_t m = WM_HID_THEN_WOL;
     if (mhal_nvs_get_u8(NVS_WAKE_METHOD, &m) != 0 || m >= WM__COUNT) m = WM_HID_THEN_WOL;
@@ -95,27 +111,25 @@ void wake_store_macs(const uint8_t macs[][6], int n)
     PR_NOTICE("wake: %d MAC(s) stored for WOL", n);
 }
 
-static wake_usb_t usb_now(void)
+wake_usb_t wake_usb_now(void)
 {
-    wake_usb_t u = {usbc_mounted(), usbc_suspended(), usbc_rwu()};
+    wake_usb_t u = {usbc_mounted(), usbc_suspended(), usbc_rwu(), g_app.usb_up_seq, link_online(&g_app.link)};
     return u;
 }
 
 wake_rc_t wake_power_on(const char *source)
 {
-    wake_usb_t u = usb_now();
+    wake_usb_t u = wake_usb_now();
     wake_rc_t rc = wake_request(&g_app.wake, g_app.wake_method, &u, app_now_ms());
     PR_NOTICE("wake: request from %s, method %s -> %s", source, wake_method_name(g_app.wake_method),
-              rc == WAKE_STARTED     ? "started"
-              : rc == WAKE_IGNORED_ON ? "ignored (PC already on)"
-              : rc == WAKE_BUSY       ? "busy (wake in progress)"
-                                      : "no target");
-    if (rc == WAKE_IGNORED_ON) app_toast("PC ya encendido", 2000);
+              rc == WAKE_STARTED   ? "started"
+              : rc == WAKE_RESENT ? "re-sent (wake in progress)"
+                                  : "no target");
     return rc;
 }
 
 void wake_mod_tick(uint32_t now)
 {
-    wake_usb_t u = usb_now();
+    wake_usb_t u = wake_usb_now();
     wake_tick(&g_app.wake, &u, now);
 }

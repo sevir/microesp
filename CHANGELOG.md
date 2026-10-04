@@ -6,6 +6,7 @@ Formato basado en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/). V
 
 ### Cambiado
 
+- **Encendido siempre enviado y Alt+P (Lenovo Smart Power On).** Con *Smart Power On* la BIOS mantiene enumerado el teclado en S5 y el dongle creía que el PC estaba encendido, así que ignoraba la orden. Ahora la orden de encendido (app, botón, `!wake force`) se envía siempre: con el bus activo pulsa Alt+P; suspendido, *remote wakeup* y Alt+P al reanudarse; sin montar, *resume* forzado; con 2 reintentos y el WOL según `wake_method`. Éxito = agente en línea o nueva enumeración del dongle tras el Alt+P. Una orden durante un encendido en curso reenvía el paso HID. `mhal_hid_tap` espera a que el host lea el informe antes de soltar la tecla (evita teclas pegadas con hosts lentos). `!status` muestra `hid_proto`.
 - **Nube: TuyaLink en lugar de TuyaOS** (ADR-5). Las licencias TuyaOS (UUID/AuthKey) no se pueden conseguir. El firmware deja de usar el cliente `tuya_iot` de TuyaOpen y habla TuyaLink (MQTT 3.1.1 sobre TLS, puerto 8883, verificación del servidor con el bundle de CAs de ESP-IDF) con un cliente propio sobre `esp-mqtt`:
   - firma HMAC-SHA256 del usuario/contraseña con la hora de SNTP en cada intento; reconexión con espera 2, 4, 8, 16 y 32 s y luego cada 120 s;
   - `property/report` con los códigos del modelo de cosa (enums como cadena, `fault` como entero), un reporte en vuelo confirmado por PUBACK, mismos umbrales y throttling, todo reportado en cada conexión;

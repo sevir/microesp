@@ -106,6 +106,7 @@ static volatile bool s_mounted, s_suspended, s_rwu_enabled, s_driver_ok;
 static volatile uint32_t s_bitrate = 115200;
 static volatile int s_pending_action;
 static volatile uint8_t s_kbd_leds;
+static volatile uint8_t s_hid_protocol = HID_PROTOCOL_REPORT;
 static int s_mode = -1;
 static bool s_mount_fallback_inhibited;
 static mhal_usb_cbs_t s_cbs;
@@ -121,6 +122,7 @@ bool mhal_usb_mounted(void) { return s_mounted; }
 bool mhal_usb_suspended(void) { return s_suspended; }
 bool mhal_usb_rwu_enabled(void) { return s_rwu_enabled; }
 uint8_t mhal_kbd_leds(void) { return s_kbd_leds; }
+uint8_t mhal_hid_protocol(void) { return s_hid_protocol; }
 const char *mhal_usb_serial(void) { return s_serial; }
 uint32_t mhal_crash_count(void) { return s_crash_count; }
 void mhal_request(int action) { s_pending_action = action; }
@@ -270,15 +272,29 @@ int mhal_hid_force_resume(void)
     return 0;
 }
 
+static bool hid_wait_ready(int ms)
+{
+    for (; ms > 0; ms -= 5) {
+        if (s_mounted && !s_suspended && tud_hid_ready()) return true;
+        vTaskDelay(pdMS_TO_TICKS(5));
+    }
+    return false;
+}
+
 int mhal_hid_tap(uint8_t modifier, uint8_t keycode)
 {
-    if (!s_driver_ok || !s_mounted || s_suspended || !tud_hid_ready()) return -1;
+    if (!s_driver_ok || !s_mounted || s_suspended || !hid_wait_ready(100)) return -1;
     uint8_t keys[6] = {keycode, 0, 0, 0, 0, 0};
-    tud_hid_keyboard_report(0, modifier, keys);
-    vTaskDelay(pdMS_TO_TICKS(30));
+    if (!tud_hid_keyboard_report(0, modifier, keys)) return -1;
+    vTaskDelay(pdMS_TO_TICKS(50));
+    /* The release must not be dropped (stuck key): wait until the host polled the
+     * press report (a BIOS/EC host may poll slowly), then retry the release. */
     uint8_t none[6] = {0};
-    tud_hid_keyboard_report(0, 0, none);
-    return 0;
+    for (int i = 0; i < 3; i++) {
+        if (hid_wait_ready(200) && tud_hid_keyboard_report(0, 0, none)) return 0;
+    }
+    ESP_LOGW(TAG, "HID key release not sent (bus went away?)");
+    return -1;
 }
 
 uint8_t const *tud_hid_descriptor_report_cb(uint8_t instance) { return s_hid_report_desc; }
@@ -293,6 +309,14 @@ void tud_hid_set_report_cb(uint8_t instance, uint8_t report_id, hid_report_type_
                            uint16_t bufsize)
 {
     if (report_type == HID_REPORT_TYPE_OUTPUT && bufsize >= 1) s_kbd_leds = buffer[0];
+}
+
+/* Diagnostic: a BIOS/EC host (e.g. Lenovo Smart Power On in S5) usually selects the boot
+ * protocol (0); an OS driver normally leaves the report protocol (1). */
+void tud_hid_set_protocol_cb(uint8_t instance, uint8_t protocol)
+{
+    s_hid_protocol = protocol;
+    ESP_LOGI(TAG, "HID SET_PROTOCOL %s", protocol == HID_PROTOCOL_BOOT ? "boot" : "report");
 }
 
 /* ------------------------------------------------------------ CDC input */
@@ -389,6 +413,7 @@ static void usb_event_cb(tinyusb_event_t *ev, void *arg)
     case TINYUSB_EVENT_ATTACHED:
         s_mounted = true;
         s_suspended = false;
+        s_hid_protocol = HID_PROTOCOL_REPORT; /* default after (re)configuration */
         ESP_LOGI(TAG, "USB mounted by host");
         if (s_cbs.on_usb) s_cbs.on_usb(MHAL_USB_MOUNT, false);
         break;

@@ -24,7 +24,7 @@ El dongle enciende el PC por dos vías:
 | 3 | **Wake from keyboard / USB** («Wake Up on USB», «USB Wake Support», «Keyboard Power On») | Power → Automatic Power On, o Devices → USB Setup | **Enabled** | Despertar con el teclado HID del dongle desde S4/S5. Desde S3 lo controla el sistema operativo (§3.1) | **Desconocido**: no se ha encontrado documentación pública de esta opción en la P3 Ultra G2. Puede no existir | |
 | 4 | **Always On USB** / «USB power in S4/S5» / «Charge in Battery/Off mode» | Devices → USB Setup o Power | **Enabled** | Mantiene los 5 V del puerto USB con el PC apagado: el dongle sigue conectado a Wi-Fi y puede mandar el WOL y la señal de *resume*. Sin esta opción, en S5 el dongle se apaga y **no puede encender nada** | **Desconocido** en este modelo. Algunos equipos lo limitan a un puerto concreto (marcado con un rayo o una batería) | |
 | 5 | **After Power Loss** | Power | **Last State** (recomendado) o **Power On** | Qué hace el PC al volver la corriente tras un corte. Con *Last State* vuelve a como estaba; *Power Off* exige pulsar el botón | Opción documentada ([Lenovo ErP][erp], [foro Lenovo][forum-apl]) | |
-| 6 | **Smart Power On** | Power → Smart Power On | Indiferente (déjalo como esté) | Encender con Alt+P desde un teclado USB *de Lenovo*. No se aplica al dongle | Documentada en la guía de la P3 Ultra SFF G2 ([ManualsLib][ug-g2]) | |
+| 6 | **Smart Power On** | Power → Smart Power On | **Enabled** | Encender (o despertar de hibernación) pulsando **Alt+P** en un teclado conectado al conector USB que admite esta función. Es la vía HID principal del dongle desde S4/S5: cada orden de encendido envía Alt+P | Documentada en la guía de usuario de la P3 Ultra («Enable or disable the smart power-on feature»: conector trasero USB-A 3.2 Gen 2 marcado *smart power on*) ([guía P3 Ultra][ug-p3u], [ManualsLib][ug-g2]) | |
 | 7 | **Fast Boot / Quick Boot** (Startup → Boot Mode: Quick / Diagnostics) | Startup | **Diagnostics** (o Fast Boot desactivado) mientras haces las pruebas | Con el arranque rápido la BIOS puede omitir la inicialización USB. No afecta al despertar, pero sí a ver el dongle en la BIOS | Probable; falta confirmar | |
 | 8 | **Wake Up on Alarm** | Power → Automatic Power On | Disabled (salvo para las pruebas de §4.3) | Encendido programado. Útil como red de seguridad en las pruebas | Documentada en otros Lenovo ([Lenovo ErP][erp]) | |
 
@@ -32,7 +32,9 @@ El dongle enciende el PC por dos vías:
 
 ### Puerto USB recomendado
 
-Usa un **puerto trasero de la placa base** (no un hub ni el frontal) y, si alguno está marcado como *Always On* o con un icono de carga, ese. **No se sabe todavía** qué puertos de la P3 Ultra SFF G2 mantienen los 5 V en S5. Para comprobarlo, apaga el PC (S5) con el dongle enchufado: si la pantalla o el LED del dongle siguen encendidos, el puerto está alimentado (también se puede medir con un multímetro USB). Apunta el resultado en el plan E2E.
+Usa el **conector USB-A trasero marcado *smart power on*** (en la P3 Ultra, el elemento 8 de la vista trasera: «USB-A 3.2 Gen 2 connector (smart power on)»). Solo ese conector vigila Alt+P con el PC apagado. Si no lo usas, usa un **puerto trasero de la placa base** (no un hub ni el frontal) y, si alguno está marcado como *Always On* o con un icono de carga, ese.
+
+> **Efecto en el estado del dongle.** Con *Smart Power On* activo, la BIOS mantiene enumerado el teclado en S5. El dongle ve entonces un bus USB montado y en marcha aunque el PC esté apagado, y el LED y `pc_state` pueden indicar `booting`/`on_no_agent` (ámbar). Por eso el firmware **envía siempre** la orden de encendido, sin mirar `pc_state`: si el bus está activo, pulsa Alt+P; si está suspendido, señal de *resume* y Alt+P al reanudarse; si no está montado, *resume* forzado. El encendido se da por bueno cuando el agente conecta o el PC vuelve a enumerar el dongle. `!status` muestra `hid_proto=boot|report` (la BIOS suele pedir el protocolo *boot*) para afinar la detección. **No se sabe todavía** qué puertos de la P3 Ultra SFF G2 mantienen los 5 V en S5. Para comprobarlo, apaga el PC (S5) con el dongle enchufado: si la pantalla o el LED del dongle siguen encendidos, el puerto está alimentado (también se puede medir con un multímetro USB). Apunta el resultado en el plan E2E.
 
 ## 3. Linux
 
@@ -120,19 +122,22 @@ Red de seguridad opcional para S5: `sudo rtcwake -m off -s 300` (necesita que la
 ## 5. Qué falta confirmar
 
 - [ ] Nombre exacto de cada opción del §2 en la BIOS de la P3 Ultra SFF G2 y versión de la BIOS (`sudo dmidecode -s bios-version`).
-- [ ] Si existe alguna opción de «USB wake»/«keyboard power on» desde S4/S5.
+- [ ] Si existe alguna opción de «USB wake»/«keyboard power on» desde S4/S5 (además de *Smart Power On*).
+- [ ] Que Alt+P del dongle enciende desde S5 en el conector *smart power on* (E2E-13) y qué `hid_proto` pide la BIOS en S5.
 - [ ] Qué puertos USB dan 5 V en S5.
 - [ ] Matriz de resultados S3/S4/S5 × HID/WOL (MESP-US-0002, [`docs/qa/e2e-v1.md`](../qa/e2e-v1.md)).
 
 ## Fuentes
 
 - Lenovo ThinkStation P3 Ultra SFF G2, guía de usuario (entrar en la BIOS con F1, Power → Smart Power On): [ManualsLib][ug-g2]
+- Lenovo ThinkStation P3 Ultra, guía de usuario (conector trasero «USB-A 3.2 Gen 2 connector (smart power on)»; «With the smart power-on feature enabled, you can start up or wake up the computer from the hibernation mode by pressing Alt+P»): [PDF][ug-p3u]
 - Lenovo, «Enabling or disabling the ErP LPS compliance mode» (Power → Enhanced Power Saving Mode; desactivar Wake on LAN si se activa; Wake Up on Alarm, After Power Loss): [download.lenovo.com][erp]
 - Lenovo ThinkCentre, manual de mantenimiento (Automatic Power On, Wake on LAN): [ManualsLib][tc-hmm]
 - Foro de Lenovo, «After Power Loss»: [forums.lenovo.com][forum-apl]
 - Especificaciones de la ThinkStation P3 Ultra SFF Gen 2 (PSREF): [psref.lenovo.com][psref]
 
 [ug-g2]: https://www.manualslib.com/manual/3960124/Lenovo-Thinkstation-P3-Ultra-Sff-G2.html
+[ug-p3u]: https://doi-product-assets.s3.amazonaws.com/pub/User-Manual/1077202329.pdf
 [erp]: https://download.lenovo.com/pccbbs/pubs/p330_tiny/html_en/en/Enabling_or_disabling_the_ErP_LPS_compliance_mode_(topic)_T0000763260.html
 [tc-hmm]: https://www.manualslib.com/manual/701412/Lenovo-Thinkcentre-Edge.html?page=173
 [forum-apl]: https://forums.lenovo.com/t5/ThinkCentre-A-E-M-S-Series/After-Power-Loss/m-p/5248695

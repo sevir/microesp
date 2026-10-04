@@ -59,7 +59,7 @@ static void cmd_help(void)
     return;
 #endif
     OUT("  !pair  !unpair           (agent pairing mode / forget key)\r\n");
-    OUT("  !wake [force]            (dry run unless 'force'; ignored while the PC is on)\r\n");
+    OUT("  !wake [force]            (dry run unless 'force'; always sent, Alt+P if bus up)\r\n");
     OUT("  !method <hid|wol|hid_then_wol>   !countdown <0..60>\r\n");
     OUT("  !cmd <shutdown|reboot> [countdown_s] [delay_s]  (simulates DP 103/104)   !cancel\r\n");
     OUT("  !key                     (harmless Left-Shift tap)\r\n");
@@ -73,10 +73,11 @@ static void cmd_status(void)
     OUT("fw=%s cloud=tuyalink tuyaopen=%s uptime=%lus reset=%s ota_part=%s image=%s rollback=%s\r\n", MESP_FW_VERSION, OPEN_VERSION,
         (unsigned long)mhal_uptime_s(), mhal_reset_reason(), mhal_ota_running(), ota_status(),
         mhal_ota_rollback_enabled() ? "on" : "off");
-    OUT("usb: mode=%d mounted=%d suspended=%d rwu_armed=%d cdc_open=%d kbd_leds=0x%02x events=%lu crash_count=%lu "
-        "serial=%s\r\n",
+    OUT("usb: mode=%d mounted=%d suspended=%d rwu_armed=%d cdc_open=%d kbd_leds=0x%02x hid_proto=%s events=%lu "
+        "crash_count=%lu serial=%s\r\n",
         mhal_usb_mode(), mhal_usb_mounted(), mhal_usb_suspended(), mhal_usb_rwu_enabled(), mhal_cdc_connected(),
-        mhal_kbd_leds(), (unsigned long)g_app.usb_events, (unsigned long)mhal_crash_count(), mhal_usb_serial());
+        mhal_kbd_leds(), mhal_hid_protocol() == 0 ? "boot" : "report", (unsigned long)g_app.usb_events,
+        (unsigned long)mhal_crash_count(), mhal_usb_serial());
     OUT("pc_state=%s faults=0x%02lx%s%s%s%s\r\n", pcs_name(g_app.pcs.state), (unsigned long)g_app.faults,
         g_app.faults & FAULT_AGENT_LOST ? " agent_lost" : "", g_app.faults & FAULT_WAKE_FAILED ? " wake_failed" : "",
         g_app.faults & FAULT_HID_NOT_ARMED ? " hid_not_armed" : "",
@@ -210,12 +211,10 @@ void cli_handle(const char *line)
         pairing_forget();
         OUT("ok: agent key forgotten\r\n");
     } else if (!strcmp(c, "!wake")) {
-        wake_usb_t u = {usbc_mounted(), usbc_suspended(), usbc_rwu()};
+        wake_usb_t u = wake_usb_now();
         if (argc >= 2 && !strcmp(argv[1], "force")) {
             wake_rc_t rc = wake_power_on("cli");
-            OUT("wake: %s\r\n", rc == WAKE_STARTED ? "started" : rc == WAKE_IGNORED_ON ? "ignored, PC is on"
-                                : rc == WAKE_BUSY                              ? "busy"
-                                                                               : "no target");
+            OUT("wake: %s\r\n", rc == WAKE_STARTED ? "started" : rc == WAKE_RESENT ? "re-sent" : "no target");
         } else {
             OUT("wake (dry run, method %s): %s\r\n", wake_method_name(g_app.wake_method),
                 wake_plan(g_app.wake_method, &u));

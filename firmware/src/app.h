@@ -78,6 +78,7 @@ typedef struct {
     /* misc */
     uint32_t boot_ms;
     uint32_t usb_events;
+    uint32_t usb_up_seq; /* mount + resume events (wake success detection) */
     int ui_screen;            /* 0 status, 1 telemetry */
     uint32_t toast_until;
     char toast[32];

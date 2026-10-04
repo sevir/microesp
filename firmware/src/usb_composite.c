@@ -75,6 +75,7 @@ void usbc_on_event(const app_ev_t *ev)
     case MHAL_USB_MOUNT:
     case MHAL_USB_RESUME:
         g_app.shutdown_expected = false; /* the PC is back */
+        g_app.usb_up_seq++;
         break;
     default:
         break;

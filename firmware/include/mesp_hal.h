@@ -41,6 +41,7 @@ bool mhal_usb_suspended(void);
 bool mhal_usb_rwu_enabled(void); /* host armed remote wakeup at the last suspend */
 bool mhal_cdc_connected(void);   /* DTR asserted by a host program */
 uint8_t mhal_kbd_leds(void);
+uint8_t mhal_hid_protocol(void); /* last HID SET_PROTOCOL: 0 = boot, 1 = report (default) */
 /* Thread-safe; drops output when no host program has the port open. */
 int mhal_cdc_write(const char *s, size_t n);
 int mhal_cdc_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
@@ -48,7 +49,8 @@ int mhal_cdc_printf(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 int mhal_hid_remote_wakeup(void);
 /* Raw resume (K-state) signalling regardless of state (best effort). 0 = signalled. */
 int mhal_hid_force_resume(void);
-/* Harmless key tap while the bus is up (modifier mask / usage code). 0 = sent. */
+/* Key tap (press + release) while the bus is up (modifier mask / usage code). 0 = sent.
+ * Blocks up to ~0.7 s waiting for the host to poll the reports. */
 int mhal_hid_tap(uint8_t modifier, uint8_t keycode);
 const char *mhal_usb_serial(void); /* "MESP-<mac12>" */
 

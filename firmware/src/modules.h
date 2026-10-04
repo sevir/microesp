@@ -33,6 +33,7 @@ void pairing_on_end(void);
 /* wake.c — power-on via HID / WOL */
 void wake_mod_init(void);
 wake_rc_t wake_power_on(const char *source);
+wake_usb_t wake_usb_now(void);
 void wake_mod_tick(uint32_t now);
 void wake_set_method(wake_method_t m);
 void wake_store_macs(const uint8_t macs[][6], int n);

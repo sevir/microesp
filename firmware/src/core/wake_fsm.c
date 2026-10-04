@@ -29,40 +29,64 @@ void wake_init(wake_t *w, const wake_cbs_t *cb)
 
 static bool up(const wake_usb_t *u) { return u->mounted && !u->suspended; }
 
+/* Agent online, or a new mount/resume edge since the start / the last Alt+P. */
+static bool succeeded(const wake_t *w, const wake_usb_t *u)
+{
+    return u->agent_online || (up(u) && !w->keys_pending && u->up_seq != w->ref_seq);
+}
+
+static void send_keys(wake_t *w, const wake_usb_t *u, uint32_t now)
+{
+    w->last_hid_ms = now;
+    w->keys_pending = false;
+    w->keys_sent = true;
+    w->ref_seq = u->up_seq;
+    if (w->cb.hid_keys) w->cb.hid_keys(w->cb.ctx);
+}
+
 static void hid_step(wake_t *w, const wake_usb_t *u, uint32_t now)
 {
     w->last_hid_ms = now;
+    if (up(u)) {
+        send_keys(w, u, now);
+        return;
+    }
+    w->keys_pending = true; /* Alt+P once the bus is up again */
     if (u->mounted && u->suspended && u->rwu_armed) {
-        w->force_path = false;
         if (w->cb.hid_remote_wakeup && w->cb.hid_remote_wakeup(w->cb.ctx) == 0) return;
     }
     /* not mounted, not armed, or the standard path failed: forced resume signalling */
-    w->force_path = true;
     if (w->cb.hid_force_resume) w->cb.hid_force_resume(w->cb.ctx);
 }
 
 const char *wake_plan(wake_method_t m, const wake_usb_t *u)
 {
-    if (up(u)) return "PC on (bus mounted, not suspended): wake would be ignored";
     if (m == WM_WOL) return "WOL magic packet to the stored MACs";
-    const char *hid = (u->mounted && u->suspended && u->rwu_armed)
-                          ? "HID remote wakeup (bus suspended, wakeup armed)"
-                          : "HID forced resume signalling (bus not mounted or wakeup not armed; best effort)";
-    return m == WM_HID_THEN_WOL ? (u->mounted && u->suspended && u->rwu_armed
-                                        ? "HID remote wakeup, then WOL after 20 s without mount"
-                                        : "HID forced resume, then WOL after 20 s without mount")
-                                : hid;
+    const char *hid = up(u) ? "HID Alt+P (bus up: Lenovo Smart Power On, or PC already on)"
+                      : (u->mounted && u->suspended && u->rwu_armed)
+                          ? "HID remote wakeup, then Alt+P when the bus resumes"
+                          : "HID forced resume signalling, then Alt+P if the bus comes up (best effort)";
+    if (m == WM_HID) return hid;
+    return up(u) ? "HID Alt+P, then WOL after 20 s without success"
+           : (u->mounted && u->suspended && u->rwu_armed)
+               ? "HID remote wakeup + Alt+P, then WOL after 20 s without success"
+               : "HID forced resume + Alt+P, then WOL after 20 s without success";
 }
 
 wake_rc_t wake_request(wake_t *w, wake_method_t m, const wake_usb_t *u, uint32_t now_ms)
 {
-    if (up(u)) return WAKE_IGNORED_ON;
-    if (w->active) return WAKE_BUSY;
+    if (w->active) {
+        /* a new command while waking: send the HID step again (never ignored) */
+        if (w->method != WM_WOL) hid_step(w, u, now_ms);
+        return WAKE_RESENT;
+    }
     if ((unsigned)m >= WM__COUNT) m = WM_HID;
     w->method = m;
     w->wol_sent = false;
+    w->keys_pending = false;
+    w->keys_sent = false;
+    w->ref_seq = u->up_seq;
     w->hid_retries = 0;
-    w->force_path = false;
     if (m == WM_WOL) {
         int n = w->cb.wol_send ? w->cb.wol_send(w->cb.ctx) : 0;
         if (n <= 0) {
@@ -85,15 +109,17 @@ wake_rc_t wake_request(wake_t *w, wake_method_t m, const wake_usb_t *u, uint32_t
 void wake_tick(wake_t *w, const wake_usb_t *u, uint32_t now_ms)
 {
     if (!w->active) return;
-    if (up(u)) {
+    if (w->keys_pending && up(u)) send_keys(w, u, now_ms);
+    if (succeeded(w, u)) {
         w->active = false;
+        w->keys_pending = false;
         w->fault_failed = false;
         w->successes++;
         if (w->cb.done) w->cb.done(w->cb.ctx, true);
         return;
     }
     int32_t el = ELAPSED(now_ms, w->start_ms);
-    if (w->method != WM_WOL && w->force_path && w->hid_retries < WAKE_HID_RETRIES &&
+    if (w->method != WM_WOL && w->hid_retries < WAKE_HID_RETRIES &&
         ELAPSED(now_ms, w->last_hid_ms) >= WAKE_HID_RETRY_MS) {
         w->hid_retries++;
         hid_step(w, u, now_ms);
@@ -104,6 +130,7 @@ void wake_tick(wake_t *w, const wake_usb_t *u, uint32_t now_ms)
     }
     if (el >= WAKE_TIMEOUT_MS) {
         w->active = false;
+        w->keys_pending = false;
         w->fault_failed = true;
         w->failures++;
         if (w->cb.done) w->cb.done(w->cb.ctx, false);
