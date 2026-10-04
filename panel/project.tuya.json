@@ -1,0 +1,13 @@
+{
+  "projectname": "MicroESP",
+  "i18n": false,
+  "description": "Panel de MicroESP: encender, apagar y reiniciar el PC y ver su telemetría",
+  "miniprogramRoot": "./dist/tuya",
+  "devMode": "ray",
+  "dependencies": {
+    "BaseKit": "3.17.7",
+    "MiniKit": "3.14.1",
+    "DeviceKit": "4.13.1"
+  },
+  "baseversion": "2.6.0"
+}
