@@ -6,11 +6,11 @@ Historia: MESP-US-0033. Criterio de aceptación: todos los casos ejecutados, con
 
 | Campo | Valor |
 |---|---|
-| Fecha(s) | |
+| Fecha(s) | 2026-10-04 (parcial) |
 | Ejecutado por | |
-| Versión del firmware (`!version`) | |
-| Versión del agente (`microesp-agent version`) | |
-| Commit del repositorio | |
+| Versión del firmware (`!version`) | 0.2.0 |
+| Versión del agente (`microesp-agent version`) | f53ecc1 |
+| Commit del repositorio | e9cc1c8 |
 | PC / versión de la BIOS (`sudo dmidecode -s bios-version`) | ThinkStation P3 Ultra SFF G2 / |
 | SO / kernel (`uname -r`) | |
 | Puerto USB del dongle | |
@@ -26,11 +26,11 @@ Historia: MESP-US-0033. Criterio de aceptación: todos los casos ejecutados, con
 
 | Caso | Pasos | Esperado | Resultado | Evidencia |
 |---|---|---|---|---|
-| E2E-01 Flasheo inicial | Flashear la imagen fusionada ([instalación §1](../usuario/instalacion.md#1-flashear-el-firmware)); desenchufar y enchufar | Enumera como `303a:4002` «MicroESP»; la pantalla muestra el estado; el LED parpadea en azul | | |
-| E2E-02 Credenciales TuyaLink y Wi-Fi | `!tylink <región> <productId> <deviceId> <deviceSecret>`, `!wifi <ssid> <contraseña>`, `!reboot`; `!status` | `tylink: ... provisioned=1 mqtt=connected`, `wifi: ... up=1 ... time_synced=1`; sin secretos en `!status` ni en `!log` | | |
-| E2E-03 Dispositivo en Smart Life | Abrir la app (vinculado desde la plataforma; sin BLE) | El dispositivo aparece en línea; propiedades `pc_state` … `fault` visibles | | |
-| E2E-04 Instalación del agente | `sudo agent/deploy/install.sh` | Servicio activo; `/dev/microesp` existe; `power/wakeup=enabled` en el dongle | | |
-| E2E-05 Emparejado agente ↔ dongle | Botón 3 s → código; `sudo microesp-agent pair` | `pair_ok`; existe `/etc/microesp/agent.key` (0600, `microesp`); tras arrancar el servicio, `agent_online=true`, `pc_state=on` | | |
+| E2E-01 Flasheo inicial | Flashear la imagen fusionada ([instalación §1](../usuario/instalacion.md#1-flashear-el-firmware)); desenchufar y enchufar | Enumera como `303a:4002` «MicroESP»; la pantalla muestra el estado; el LED parpadea en azul | OK | Flasheado 0.2.0 por USB (tools/flash.sh); enumera 303a:4002 `MESP-907069f662dc` |
+| E2E-02 Credenciales TuyaLink y Wi-Fi | `!tylink <región> <productId> <deviceId> <deviceSecret>`, `!wifi <ssid> <contraseña>`, `!reboot`; `!status` | `tylink: ... provisioned=1 mqtt=connected`, `wifi: ... up=1 ... time_synced=1`; sin secretos en `!status` ni en `!log` | OK | `!status`: `wifi up=1`, `mqtt=connected` (eu), `time_synced=1`; secretos no aparecen en `!log` |
+| E2E-03 Dispositivo en Smart Life | Abrir la app (vinculado desde la plataforma; sin BLE) | El dispositivo aparece en línea; propiedades `pc_state` … `fault` visibles | OK | Vinculado por QR (+ → Escanear) con producto TuyaLink Central EU; valores visibles tras cambiar el panel |
+| E2E-04 Instalación del agente | `sudo agent/deploy/install.sh` | Servicio activo; `/dev/microesp` existe; `power/wakeup=enabled` en el dongle | OK | `install.sh --binary ./microesp-agent --no-start`; servicio activo; arranca solo al reenumerar el dongle |
+| E2E-05 Emparejado agente ↔ dongle | Botón 3 s → código; `sudo microesp-agent pair` | `pair_ok`; existe `/etc/microesp/agent.key` (0600, `microesp`); tras arrancar el servicio, `agent_online=true`, `pc_state=on` | OK | Código en pantalla (botón 3-5 s); `sudo microesp-agent pair`; journal: `session ready` 02:06:32 |
 | E2E-06 Emparejado con código erróneo | 3 códigos incorrectos | El dongle sale del modo de emparejado; la clave anterior no cambia | | |
 | E2E-07 Re-emparejado | Emparejar de nuevo | La clave nueva funciona en los dos lados; la anterior queda invalidada | | |
 
@@ -56,9 +56,9 @@ Antes de cada caso: el PC en el estado indicado y el dongle conectado a la nube.
 | E2E-20 Apagado (dry-run) | `dry_run = true`; app → Apagar | Cuenta atrás en la pantalla (DP 112) y LED rojo; `cmd` firmado → `ack ok`; log `dry-run`; `last_result=ok`; DP 103 vuelve a `false` | | |
 | E2E-21 Apagado real | `dry_run = false`; app → Apagar | El PC se apaga tras la cuenta atrás; `pc_state` → `off` | | |
 | E2E-22 Reinicio real | app → Reiniciar | El PC reinicia; el agente reconecta (`on`) | | |
-| E2E-23 Cancelar con el botón | app → Apagar; pulsación corta durante la cuenta atrás | `last_result=cancelled`; `notice{cancel}`; el PC sigue encendido | | |
+| E2E-23 Cancelar con el botón | app → Apagar; pulsación corta durante la cuenta atrás | `last_result=cancelled`; `notice{cancel}`; el PC sigue encendido | OK (con Reiniciar) | journal 2026-10-04: `notice action=reboot in=10` 02:12:32 → `notice action=cancel` 02:12:35; PC sigue encendido |
 | E2E-24 Cancelar desde la app | app → Apagar; DP 103 a `false` durante la cuenta atrás | `cancelled` | | |
-| E2E-25 Apagado sin agente | `systemctl stop microesp-agent`; app → Apagar | `last_result=agent_offline`; no hay cuenta atrás | | |
+| E2E-25 Apagado sin agente | `systemctl stop microesp-agent`; app → Apagar | `last_result=agent_offline`; no hay cuenta atrás | OK | Servicio parado: app → Reiniciar → `last_result=agent_offline`, `rx_cmds=2` |
 | E2E-26 Inhibidor activo | `systemd-inhibit --what=shutdown sleep 600 &`; app → Apagar | `ack` y luego `exec_failed` en el log, o `cmd_rejected`; el PC **no** se apaga | | |
 | E2E-27 Seguridad de las órdenes | Revisar los tests (`go test ./internal/link`, `firmware/build.sh test`): firma incorrecta y repetición | `bad_sig` / `replay` rechazados (cubierto por tests) | | |
 
