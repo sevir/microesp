@@ -46,7 +46,7 @@ panel/
 
 ## Desarrollo
 
-Requisitos: Node ≥ 22.6, Tuya MiniApp IDE y una cuenta de la Tuya Developer Platform.
+Requisitos: Node ≥ 22.6, Tuya MiniApp IDE y una cuenta de la Tuya Developer Platform. `project.tuya.json` necesita `baseversion` ≥ 2.27.0 o el IDE no compila.
 
 ```bash
 cd panel
@@ -56,16 +56,36 @@ npm run typecheck
 npm run build:tuya   # genera dist/tuya
 ```
 
+### El IDE en Linux (Wine)
+
+Tuya solo publica el MiniApp IDE para Windows y macOS. En Linux funciona la versión de Windows bajo Wine con estos ajustes (montaje local en `/www/MicroESP/tools/tuya-ide/`, ver su `README.txt`):
+
+- La aplicación se extrae del instalador NSIS (`$PLUGINSDIR/app-64.7z`) a un prefijo propio. El instalador falla bajo Wine.
+- Node para Windows en el prefijo y en su `PATH`.
+- El IDE compila lanzando `npx ray build` en una terminal PowerShell, y en Wine `powershell.exe` no hace nada. Hay que parchear `rayBuild()` en `@ark/miniapp-compiler` para que ejecute `node node_modules/@ray-js/cli/bin/ray build …` directamente.
+- `node_modules` instalado en Linux solo trae los binarios nativos de Linux. Tras cada `npm install`, ejecuta `npm run ide:win-natives` para añadir los de Windows (esbuild, lightningcss, oxc, tailwind oxide).
+
+Las carpetas `typings/tuya*` las genera el IDE al importar el proyecto y no se versionan.
+
+## Probarlo en el móvil
+
+1. En el IDE, **Account** (arriba a la derecha) muestra un QR. Escanéalo con Smart Life (**+ → Escanear**) usando la cuenta dueña del dispositivo.
+2. **Plugins → Panel Tools → debug real device** y elige el dispositivo.
+3. **Preview** genera otro QR. Escanéalo con Smart Life y se abre el panel con el dispositivo real, sin cambiar el panel que ve el producto.
+
+Apagar y Reiniciar actúan de verdad: para probar la orden, confirma y cancela durante la cuenta atrás.
+
 ## Publicarlo en Smart Life
 
 1. En la Smart MiniApp Developer Platform crea una **Panel MiniApp**.
-2. En el MiniApp IDE importa la carpeta `panel/`. Vincula el **producto** TuyaLink de MicroESP y la MiniApp del paso 1. El IDE añade su `appid` a `project.tuya.json`.
-3. Con `npm run start:tuya` en marcha, prueba en el IDE con el dispositivo real o escanea el QR de vista previa con Smart Life.
-4. Sube la versión desde el IDE. En la plataforma pide la revisión, que hace Tuya antes de publicarla.
-5. En la plataforma de IoT, en el producto, cambia el panel por esta MiniApp.
+2. En el MiniApp IDE importa la carpeta `panel/` y vincula el **producto** TuyaLink de MicroESP y la MiniApp del paso 1.
+3. Sube la versión desde el IDE. En la plataforma de MiniApps, en **gestión de versiones**, pide la revisión y, una vez aprobada, actívala como versión online.
+4. En la plataforma de IoT, en el producto, cambia el panel por esta MiniApp.
 
-Pendiente de comprobar en el IDE con el dispositivo real:
+Comprobado con el dispositivo real: `getDeviceInfo` entrega las propiedades en `dps` con claves de abilityId (`"101"`…`"114"`), que el panel mezcla con `mergeDps`.
 
-- si `getDeviceInfo` rellena `dpCodes` en productos TuyaLink;
+Pendiente de comprobar:
+
+- si `getDeviceInfo` rellena también `dpCodes` en productos TuyaLink;
 - la forma exacta del `payload` de `onReceivedThingModelMessage`. El modelo acepta valores sueltos y `{value, time}`;
 - si la publicación exige verificar la organización, como pasó con las licencias de TuyaOS.

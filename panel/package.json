@@ -6,6 +6,9 @@
   "scripts": {
     "start:tuya": "ray start --target=tuya",
     "build:tuya": "ray build --target=tuya",
+    "start:ide": "ray start --target=tuya --output dist/tuya-release",
+    "build:ide": "ray build --target=tuya --output dist/tuya-release",
+    "ide:win-natives": "scripts/add-win-natives.sh",
     "typecheck": "tsc --noEmit -p .",
     "test": "node --no-warnings --test test/*.test.mjs"
   },
