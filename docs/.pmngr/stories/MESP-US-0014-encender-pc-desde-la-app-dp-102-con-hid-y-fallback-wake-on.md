@@ -2,7 +2,7 @@
 id: MESP-US-0014
 type: story
 title: Encender PC desde la app (DP 102) con HID y fallback Wake-on-LAN
-status: in_review
+status: done
 priority: critical
 parent: MESP-EP-0004
 milestone: MESP-M-0002
@@ -10,8 +10,9 @@ author: mcp
 labels: [firmware, wake]
 estimate: 5
 created: 2026-10-03T08:59:05Z
-updated: 2026-10-03T11:38:27Z
+updated: 2026-10-04T22:00:30Z
 started: 2026-10-03T10:59:23Z
+closed: 2026-10-04T22:00:30Z
 ---
 
 ## Description

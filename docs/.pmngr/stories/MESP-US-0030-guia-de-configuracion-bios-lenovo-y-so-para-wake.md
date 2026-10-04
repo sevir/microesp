@@ -2,7 +2,7 @@
 id: MESP-US-0030
 type: story
 title: Guía de configuración BIOS Lenovo y SO para wake
-status: in_review
+status: done
 priority: medium
 parent: MESP-EP-0008
 milestone: MESP-M-0003
@@ -10,8 +10,9 @@ author: mcp
 labels: [deploy, docs, bios]
 estimate: 2
 created: 2026-10-03T08:59:43Z
-updated: 2026-10-03T11:47:18Z
+updated: 2026-10-04T22:00:30Z
 started: 2026-10-03T11:47:18Z
+closed: 2026-10-04T22:00:30Z
 ---
 
 ## Description

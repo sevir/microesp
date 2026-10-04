@@ -2,13 +2,14 @@
 id: MESP-EP-0001
 type: epic
 title: E1 · Spikes de riesgo y bring-up de la placa
-status: backlog
+status: done
 priority: critical
 milestone: MESP-M-0001
 author: mcp
 labels: [spike, hardware, firmware]
 created: 2026-10-03T08:57:35Z
-updated: 2026-10-03T10:03:02Z
+updated: 2026-10-04T22:00:42Z
+closed: 2026-10-04T22:00:42Z
 ---
 
 ## Description

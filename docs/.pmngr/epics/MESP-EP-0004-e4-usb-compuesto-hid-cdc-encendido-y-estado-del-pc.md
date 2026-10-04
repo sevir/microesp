@@ -2,13 +2,14 @@
 id: MESP-EP-0004
 type: epic
 title: E4 · USB compuesto HID+CDC, encendido y estado del PC
-status: backlog
+status: done
 priority: critical
 milestone: MESP-M-0002
 author: mcp
 labels: [firmware, usb, wake]
 created: 2026-10-03T08:57:35Z
-updated: 2026-10-03T08:57:35Z
+updated: 2026-10-04T22:00:42Z
+closed: 2026-10-04T22:00:42Z
 ---
 
 ## Description

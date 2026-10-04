@@ -2,7 +2,7 @@
 id: MESP-US-0027
 type: story
 title: Ejecución de apagado y reinicio recibidos del dongle
-status: in_review
+status: done
 priority: high
 parent: MESP-EP-0007
 milestone: MESP-M-0003
@@ -10,8 +10,9 @@ author: mcp
 labels: [agent, go, power]
 estimate: 3
 created: 2026-10-03T08:59:43Z
-updated: 2026-10-03T10:36:36Z
+updated: 2026-10-04T22:00:30Z
 started: 2026-10-03T10:18:52Z
+closed: 2026-10-04T22:00:30Z
 ---
 
 ## Description

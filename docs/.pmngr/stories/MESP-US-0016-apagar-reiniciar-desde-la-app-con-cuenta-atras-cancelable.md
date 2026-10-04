@@ -2,7 +2,7 @@
 id: MESP-US-0016
 type: story
 title: Apagar/reiniciar desde la app con cuenta atrás cancelable (DP 103/104/113)
-status: in_review
+status: done
 priority: high
 parent: MESP-EP-0004
 milestone: MESP-M-0003
@@ -10,8 +10,9 @@ author: mcp
 labels: [firmware, safety]
 estimate: 3
 created: 2026-10-03T08:59:05Z
-updated: 2026-10-03T11:38:27Z
+updated: 2026-10-04T22:00:30Z
 started: 2026-10-03T11:38:27Z
+closed: 2026-10-04T22:00:30Z
 ---
 
 ## Description

@@ -2,13 +2,14 @@
 id: MESP-EP-0007
 type: epic
 title: E7 · Agente Go microesp-agent
-status: backlog
+status: done
 priority: high
 milestone: MESP-M-0003
 author: mcp
 labels: [agent, go]
 created: 2026-10-03T08:57:35Z
-updated: 2026-10-03T08:57:35Z
+updated: 2026-10-04T22:00:42Z
+closed: 2026-10-04T22:00:42Z
 ---
 
 ## Description

@@ -2,7 +2,7 @@
 id: MESP-US-0002
 type: story
 title: "Spike: encender Lenovo desde S3 y S5 con teclado HID TinyUSB"
-status: backlog
+status: done
 priority: critical
 parent: MESP-EP-0001
 milestone: MESP-M-0001
@@ -10,7 +10,8 @@ author: mcp
 labels: [spike, usb, wake]
 estimate: 5
 created: 2026-10-03T08:58:23Z
-updated: 2026-10-03T08:58:23Z
+updated: 2026-10-04T22:00:30Z
+closed: 2026-10-04T22:00:30Z
 ---
 
 ## Description

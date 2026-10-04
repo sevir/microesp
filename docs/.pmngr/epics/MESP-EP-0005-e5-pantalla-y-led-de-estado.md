@@ -2,13 +2,14 @@
 id: MESP-EP-0005
 type: epic
 title: E5 · Pantalla y LED de estado
-status: backlog
+status: done
 priority: medium
 milestone: MESP-M-0002
 author: mcp
 labels: [firmware, ui]
 created: 2026-10-03T08:57:35Z
-updated: 2026-10-03T10:03:02Z
+updated: 2026-10-04T22:00:42Z
+closed: 2026-10-04T22:00:42Z
 ---
 
 ## Description

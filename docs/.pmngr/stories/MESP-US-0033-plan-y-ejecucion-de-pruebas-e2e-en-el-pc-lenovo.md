@@ -2,7 +2,7 @@
 id: MESP-US-0033
 type: story
 title: Plan y ejecución de pruebas E2E en el PC Lenovo
-status: backlog
+status: done
 priority: high
 parent: MESP-EP-0009
 milestone: MESP-M-0004
@@ -10,7 +10,8 @@ author: mcp
 labels: [qa, e2e]
 estimate: 3
 created: 2026-10-03T08:59:43Z
-updated: 2026-10-03T08:59:43Z
+updated: 2026-10-04T22:00:30Z
+closed: 2026-10-04T22:00:30Z
 ---
 
 ## Description

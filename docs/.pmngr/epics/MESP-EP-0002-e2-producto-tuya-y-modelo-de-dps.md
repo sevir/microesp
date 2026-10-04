@@ -2,13 +2,14 @@
 id: MESP-EP-0002
 type: epic
 title: E2 · Producto Tuya y modelo de DPs
-status: backlog
+status: done
 priority: high
 milestone: MESP-M-0002
 author: mcp
 labels: [tuya, cloud]
 created: 2026-10-03T08:57:35Z
-updated: 2026-10-03T08:57:35Z
+updated: 2026-10-04T22:00:42Z
+closed: 2026-10-04T22:00:42Z
 ---
 
 ## Description
