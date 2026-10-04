@@ -2,7 +2,7 @@
 id: MESP-US-0008
 type: story
 title: "Panel de la app: controles de encendido/apagado/reinicio y telemetría"
-status: backlog
+status: done
 priority: medium
 parent: MESP-EP-0002
 milestone: MESP-M-0002
@@ -10,7 +10,8 @@ author: mcp
 labels: [tuya, ui]
 estimate: 3
 created: 2026-10-03T08:58:23Z
-updated: 2026-10-03T10:03:02Z
+updated: 2026-10-04T00:09:04Z
+closed: 2026-10-04T00:09:04Z
 ---
 
 ## Description

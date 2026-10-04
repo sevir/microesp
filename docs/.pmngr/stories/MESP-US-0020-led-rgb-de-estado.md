@@ -2,7 +2,7 @@
 id: MESP-US-0020
 type: story
 title: LED RGB de estado
-status: in_review
+status: done
 priority: low
 parent: MESP-EP-0005
 milestone: MESP-M-0002
@@ -10,8 +10,9 @@ author: mcp
 labels: [firmware, ui]
 estimate: 1
 created: 2026-10-03T08:59:05Z
-updated: 2026-10-03T11:57:34Z
+updated: 2026-10-04T00:09:04Z
 started: 2026-10-03T11:57:34Z
+closed: 2026-10-04T00:09:04Z
 ---
 
 ## Description

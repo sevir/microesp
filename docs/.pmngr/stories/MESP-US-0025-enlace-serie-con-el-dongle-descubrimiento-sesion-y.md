@@ -2,7 +2,7 @@
 id: MESP-US-0025
 type: story
 title: "Enlace serie con el dongle: descubrimiento, sesión y reconexión"
-status: in_review
+status: done
 priority: high
 parent: MESP-EP-0007
 milestone: MESP-M-0003
@@ -10,8 +10,9 @@ author: mcp
 labels: [agent, go, protocol]
 estimate: 5
 created: 2026-10-03T08:59:43Z
-updated: 2026-10-03T10:36:36Z
+updated: 2026-10-04T00:09:04Z
 started: 2026-10-03T10:18:52Z
+closed: 2026-10-04T00:09:04Z
 ---
 
 ## Description

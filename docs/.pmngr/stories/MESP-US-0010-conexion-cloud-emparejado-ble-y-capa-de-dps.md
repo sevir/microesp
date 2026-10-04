@@ -2,7 +2,7 @@
 id: MESP-US-0010
 type: story
 title: Conexión cloud, emparejado BLE y capa de DPs
-status: in_review
+status: done
 priority: high
 parent: MESP-EP-0003
 milestone: MESP-M-0002
@@ -10,8 +10,9 @@ author: mcp
 labels: [firmware, tuya]
 estimate: 5
 created: 2026-10-03T08:58:23Z
-updated: 2026-10-03T11:38:27Z
+updated: 2026-10-04T00:09:04Z
 started: 2026-10-03T10:59:23Z
+closed: 2026-10-04T00:09:04Z
 ---
 
 ## Description

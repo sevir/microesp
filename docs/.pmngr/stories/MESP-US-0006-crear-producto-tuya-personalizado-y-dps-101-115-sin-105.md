@@ -2,7 +2,7 @@
 id: MESP-US-0006
 type: story
 title: Crear producto Tuya personalizado y DPs 101-115 (sin 105)
-status: backlog
+status: done
 priority: high
 parent: MESP-EP-0002
 milestone: MESP-M-0002
@@ -10,7 +10,8 @@ author: mcp
 labels: [tuya]
 estimate: 3
 created: 2026-10-03T08:58:23Z
-updated: 2026-10-03T10:03:02Z
+updated: 2026-10-04T00:09:04Z
+closed: 2026-10-04T00:09:04Z
 ---
 
 ## Description

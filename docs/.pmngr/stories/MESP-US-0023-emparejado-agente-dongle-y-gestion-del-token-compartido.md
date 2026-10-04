@@ -2,7 +2,7 @@
 id: MESP-US-0023
 type: story
 title: Emparejado agente↔dongle y gestión del token compartido
-status: in_review
+status: done
 priority: medium
 parent: MESP-EP-0006
 milestone: MESP-M-0003
@@ -10,8 +10,9 @@ author: mcp
 labels: [protocol, security]
 estimate: 3
 created: 2026-10-03T08:59:05Z
-updated: 2026-10-03T11:57:34Z
+updated: 2026-10-04T00:09:04Z
 started: 2026-10-03T11:38:27Z
+closed: 2026-10-04T00:09:04Z
 ---
 
 ## Description

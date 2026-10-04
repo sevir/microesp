@@ -2,7 +2,7 @@
 id: MESP-US-0011
 type: story
 title: OTA Tuya con rollback y versionado
-status: in_review
+status: backlog
 priority: medium
 parent: MESP-EP-0003
 milestone: MESP-M-0004
@@ -10,7 +10,7 @@ author: mcp
 labels: [firmware, ota]
 estimate: 3
 created: 2026-10-03T08:58:23Z
-updated: 2026-10-03T11:38:27Z
+updated: 2026-10-04T00:09:04Z
 started: 2026-10-03T11:38:27Z
 ---
 

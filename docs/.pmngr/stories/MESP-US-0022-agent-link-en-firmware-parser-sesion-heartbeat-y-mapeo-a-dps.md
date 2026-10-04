@@ -2,7 +2,7 @@
 id: MESP-US-0022
 type: story
 title: "agent_link en firmware: parser, sesión, heartbeat y mapeo a DPs"
-status: in_review
+status: done
 priority: high
 parent: MESP-EP-0006
 milestone: MESP-M-0003
@@ -10,8 +10,9 @@ author: mcp
 labels: [protocol, firmware]
 estimate: 5
 created: 2026-10-03T08:59:05Z
-updated: 2026-10-03T11:38:27Z
+updated: 2026-10-04T00:09:04Z
 started: 2026-10-03T10:59:23Z
+closed: 2026-10-04T00:09:04Z
 ---
 
 ## Description

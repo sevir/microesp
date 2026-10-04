@@ -79,7 +79,16 @@ El LED deja de parpadear en azul y el icono de nube de la pantalla aparece sin t
 
 ## 3. Comprobar el dispositivo en Smart Life
 
-Con TuyaLink **no hay emparejado BLE/AP**: el dispositivo ya está vinculado a tu cuenta desde la plataforma Tuya. En cuanto conecta aparece en línea en la app con `pc_state` y el resto de propiedades. Si no aparece, revisa en la plataforma que el dispositivo esté vinculado a la cuenta de la app.
+Con TuyaLink **no hay emparejado BLE/AP**. Pasos (validados el 2026-10-04 en Central Europe):
+
+1. En la plataforma Tuya, el producto debe ser **TuyaLink** (no TuyaOS) y estar en el **mismo centro de datos** que tu cuenta de Smart Life (en España: Central Europe).
+2. Registra el dispositivo en **Device Management** del producto: obtienes `productId`, `deviceId` y `deviceSecret` (los que se cargan con `!tylink`).
+3. Con el dongle **conectado** (`!status` → `mqtt=connected`), abre el **QR del dispositivo** en Device Management y en Smart Life pulsa **+ → Escanear** (no "Añadir dispositivo"). Si el dongle está desconectado la vinculación falla.
+4. Si en la app solo ves el control de la categoría (p. ej. enchufe) y no CPU/memoria/estado, cambia el **panel** del producto en la plataforma por uno que muestre todas las funciones.
+
+Notas:
+- La nube EU acepta los reportes sin confirmarlos (`property/report_response` solo llega si el mensaje pide `"sys":{"ack":1}`).
+- Las órdenes de la app llegan como `property/set` con `msgId` numérico.
 
 Solo puede haber **una conexión por deviceId**: si otro programa usa las mismas credenciales (por ejemplo el script de pruebas `hw/spikes/tylink_test.py`), la nube desconecta al dongle, que reintenta solo.
 
