@@ -278,3 +278,62 @@ func TestMiscHelpers(t *testing.T) {
 		t.Error("Error formatting")
 	}
 }
+
+func TestScripts(t *testing.T) {
+	for action, want := range map[string]string{
+		"script:backup":        "backup",
+		"script:a_b-9":         "a_b-9",
+		"script:":              "",
+		"script:Backup":        "",
+		"script:abcdefghijklm": "",
+		"shutdown":             "",
+	} {
+		id, ok := ScriptID(action)
+		if id != want || ok != (want != "") {
+			t.Errorf("ScriptID(%q) = %q %v", action, id, ok)
+		}
+	}
+	if ScriptAction("backup") != "script:backup" {
+		t.Error("ScriptAction")
+	}
+	for label, ok := range map[string]bool{
+		"Backup NAS":            true,
+		"Copia de seguridad ñ":  true,
+		strings.Repeat("x", 24): true,
+		strings.Repeat("x", 25): false,
+		"":                      false,
+		"a\\b":                  false,
+		"a\"b":                  false,
+		"tab\there":             false,
+		"del\x7f":               false,
+		"c1\u0085":              false,
+		"bad\xff":               false,
+	} {
+		if got := CheckScriptLabel(label) == ""; got != ok {
+			t.Errorf("CheckScriptLabel(%q) valid = %v, want %v", label, got, ok)
+		}
+	}
+	// An empty list encodes as [] and a nil one is rejected.
+	b, err := Encode(&Scripts{List: []ScriptInfo{}})
+	if err != nil || string(b) != "{\"t\":\"scripts\",\"list\":[]}\n" {
+		t.Fatalf("%q %v", b, err)
+	}
+	if err := Validate(&Scripts{}); CodeOf(err) != CodeBadMsg {
+		t.Errorf("nil list: %v", err)
+	}
+	if _, err := Decode([]byte(`{"t":"scripts","list":null}`)); CodeOf(err) != CodeBadMsg {
+		t.Errorf("null list: %v", err)
+	}
+	// Worst case (5 items, 12-byte ids, 24-byte labels) fits in a line.
+	var full []ScriptInfo
+	for i := 0; i < MaxScripts; i++ {
+		full = append(full, ScriptInfo{ID: strings.Repeat(string(rune('a'+i)), MaxScriptIDLen), Label: strings.Repeat("é", MaxScriptLabelLen/2)})
+	}
+	if b, err := Encode(&Scripts{List: full}); err != nil || len(b) > MaxLine {
+		t.Fatalf("worst case: %d bytes, %v", len(b), err)
+	}
+	// A cmd with a malformed script id is an unknown action.
+	if _, err := Decode([]byte(`{"t":"cmd","id":1,"action":"script:BAD","sig":"00"}`)); CodeOf(err) != AckUnknownAction {
+		t.Errorf("bad script id: %v", err)
+	}
+}

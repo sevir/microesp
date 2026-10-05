@@ -98,7 +98,7 @@ Why:
 Protocol (summary; details in `firmware/README.md` and `firmware/schema/dp.json`):
 - Broker per region: `m1.tuya{eu,us,cn,in}.com:8883`, TLS with server verification (ESP-IDF CA bundle; `*.tuyaeu.com` chains to "Go Daddy Root Certificate Authority - G2").
 - `clientId = tuyalink_<deviceId>`; `username = <deviceId>|signMethod=hmacSha256,timestamp=<s>,secureMode=1,accessType=1`; `password = hex(HMAC-SHA256(deviceSecret, "deviceId=<id>,timestamp=<s>,secureMode=1,accessType=1"))`. Requires real time: SNTP before connecting. It is signed again on every connection attempt.
-- Topics `tylink/<deviceId>/thing/...`: `property/report`, `property/set` (+ `_response`), `action/execute` (+ `_response`), `model/get` (+ `_response`). The DPs in §5 are the properties of the thing model: they are identified by **code**; the numbers 101-114 are the `abilityId`s and remain as documentation and internal key. Enums travel as strings and the bitmap as an integer.
+- Topics `tylink/<deviceId>/thing/...`: `property/report`, `property/set` (+ `_response`), `action/execute` (+ `_response`), `model/get` (+ `_response`). The DPs in §5 are the properties of the thing model: they are identified by **code**; the numbers 101-116 are the `abilityId`s and remain as documentation and internal key. Enums travel as strings and the bitmap as an integer.
 - Provisioning through the CDC CLI (`!tylink`, `!wifi`) with the same release/dev policy as before. No BLE/AP pairing.
 
 Consequences:
@@ -144,6 +144,8 @@ flowchart LR
 | 112 | `cmd_countdown` | value | rw | 0–60 s (shutdown safety) | dongle |
 | 113 | `last_result` | enum | ro | ok, wake_sent, wake_failed, cmd_rejected, agent_offline, cancelled | dongle |
 | 114 | `fault` | bitmap | ro | agent_lost, wake_failed, hid_not_armed, cloud_lost | dongle |
+| 115 | `scripts` | string | ro | ≤255; compact JSON `[["<id>","<label>"],...]` of the agent's user scripts (0..5, ≤221 bytes); not reported until the agent sends its list | agent |
+| 116 | `script_run` | string | rw (push button) | ≤12; `<id>` of a script in 115 → `cmd script:<id>`; result in 113; reported back to `""` | dongle |
 
 Reporting policy: telemetry every 30 s or if it changes by >2 points; at most 200 reports/DP/60 s; asynchronous reporting (deduplicates). With TuyaLink the "Code" column is the property identifier in the JSON and the number is the `abilityId`; enums are sent as strings and `fault` as an integer (bit mask).
 

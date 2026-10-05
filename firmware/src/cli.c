@@ -97,6 +97,12 @@ static void cmd_status(void)
         g_app.pwr.st == PWR_IDLE ? "idle" : g_app.pwr.st == PWR_COUNTDOWN ? "countdown" : "wait_ack",
         pwr_action_name(g_app.pwr.action), pwr_remaining_s(&g_app.pwr, now), g_app.countdown_s,
         g_app.have_last_result ? lr_name(g_app.last_result) : "-");
+    OUT("scripts: %s", l->scripts_known ? "" : "none received yet");
+    for (int i = 0; i < l->nscripts; i++) OUT("%s%s", i ? "," : "", l->scripts[i].id);
+    if (l->scripts_known && !l->nscripts) OUT("(empty list)");
+    OUT(" waiting_ack=%d runs=%lu ok=%lu rejected=%lu offline=%lu\r\n", g_app.scr.waiting,
+        (unsigned long)g_app.scr.runs, (unsigned long)g_app.scr.ok, (unsigned long)g_app.scr.rejected,
+        (unsigned long)g_app.scr.offline);
     if (s_sched.armed)
         OUT("scheduled: %s countdown=%ds in %lds\r\n", pwr_action_name(s_sched.action), s_sched.countdown,
             (long)((int32_t)(s_sched.at - now) / 1000));
@@ -201,7 +207,7 @@ void cli_handle(const char *line)
     } else if (!strcmp(c, "!version")) {
         OUT("%s\r\n", MESP_FW_VERSION);
     } else if (!strcmp(c, "!dp")) {
-        char j[512];
+        static char j[1024]; /* app task only; DP 115 alone may take ~250 bytes */
         dpm_to_json(&g_app.dpm, j, sizeof(j));
         OUT("%s\r\n", j);
     } else if (!strcmp(c, "!pair")) {

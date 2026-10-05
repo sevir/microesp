@@ -43,6 +43,7 @@ agent                           dongle
 | `auth` | `sig` | |
 | `tele` | `seq` (uint32), `cpu`, `mem`, `disk_free` (integers 0..1000 = tenths of %), `uptime` (s, uint32) | every 10 s or change >20 tenths |
 | `hb` | — | every 5 s if there was no other message |
+| `scripts` | `list` (array of `{id,label}`, 0..5 items) | user scripts configured in the agent (§3.1); sent after every `ready` |
 | `ack` | `id`, `ok` (bool), optional `err` (`bad_sig`, `replay`, `exec_failed`, `unknown_action`) | reply to `cmd`, before executing |
 | `pair`, `pair_confirm` | see §4 | |
 
@@ -53,7 +54,7 @@ agent                           dongle
 | `welcome` | `v`, `fw`, `dev` (mac12hex), `nonce`, `sig` | |
 | `ready` | — | authenticated session |
 | `notice` | `action` (`shutdown`/`reboot`), `in` (s) | countdown notice; `in:0` with `action:"cancel"` = cancelled |
-| `cmd` | `id` (uint32 increasing per session, starts at 1), `action` (`shutdown`/`reboot`), `sig=HMAC(K,"cmd|id|action|Na|Nd")` | |
+| `cmd` | `id` (uint32 increasing per session, starts at 1), `action` (`shutdown`/`reboot`/`script:<id>`), `sig=HMAC(K,"cmd|id|action|Na|Nd")` | |
 | `pair_chal`, `pair_ok` | see §4 | |
 | `err` | `code` (`bad_msg`, `too_long`, `unauth`, `not_paired`, `unsupported_version`, `pair_failed`) | |
 
@@ -63,6 +64,25 @@ agent                           dongle
 - `id` must be greater than the last one accepted in the session; otherwise → `ack{ok:false,err:"replay"}`.
 - Unknown `action` → `ack{ok:false,err:"unknown_action"}`.
 - If everything is valid: send `ack{ok:true}` **and then** execute.
+- `script:<id>`: `<id>` must be a script of the agent configuration, otherwise → `ack{ok:false,err:"unknown_action"}`. If that script is still running → `ack{ok:false,err:"exec_failed"}`. The script runs in the background: the session keeps going (telemetry, heartbeats, other commands) while it runs.
+
+### 3.1 User scripts
+
+The agent configuration (`[[scripts]]` in `agent.toml`) defines up to 5 scripts. Only the `id` and `label` leave the PC; the command line never does, so the cloud can only start scripts the owner defined on the PC.
+
+```
+  scripts{list:[{id:"backup",label:"Backup NAS"}]}  →      (after ready; no reply)
+                                ←  cmd{id:3,action:"script:backup",sig}
+  ack{id:3,ok:true}                         →      (then runs the command)
+```
+
+- `id`: `^[a-z0-9_-]{1,12}$`, unique in the list.
+- `label`: 1..24 bytes of UTF-8, no control characters, no `"` and no `\` (the dongle copies it into a JSON string without escaping).
+- `list` holds 0..5 items. An empty list means the agent has no scripts.
+- The agent sends `scripts` after every `ready` (also when the list is empty), and again if its configuration is reloaded.
+- The dongle replaces its list with each valid `scripts` message. An invalid one → `err{code:"bad_msg"}` and the previous list is kept. A dongle firmware without scripts support answers `err{code:"bad_msg"}`; the agent logs it and carries on.
+- The dongle only sends `cmd{action:"script:<id>"}` for an `id` of the current list.
+- Worst case line: 5 items × (12 + 24 + 20) + 30 < 512 bytes.
 
 ### Timeouts
 
@@ -100,3 +120,5 @@ Number = `abilityId`; in the cloud (TuyaLink) each DP travels under its property
 | session `ready` and live heartbeat | 108 `agent_online` |
 | DP 103 `power_off` / 104 `reboot` after the DP 112 `cmd_countdown` countdown | `cmd` shutdown / reboot |
 | result of `ack` | 113 `last_result` |
+| `scripts.list` | 115 `scripts` (string, compact JSON `[["<id>","<label>"],...]`) |
+| DP 116 `script_run` = `<id>` | `cmd` `script:<id>` |

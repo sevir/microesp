@@ -22,6 +22,7 @@ const (
 	TypePairChal    = "pair_chal"
 	TypePairConfirm = "pair_confirm"
 	TypePairOK      = "pair_ok"
+	TypeScripts     = "scripts"
 )
 
 // Command / notice actions.
@@ -29,6 +30,10 @@ const (
 	ActionShutdown = "shutdown"
 	ActionReboot   = "reboot"
 	ActionCancel   = "cancel" // only valid in notice
+
+	// ActionScriptPrefix prefixes a cmd action that runs a user script:
+	// "script:<id>" (cdc-v1 §3.1).
+	ActionScriptPrefix = "script:"
 )
 
 // Error codes carried by err{code} (dongle -> agent) and ack{err}.
@@ -56,6 +61,10 @@ const (
 	NonceHexLen = 2 * NonceBytes
 	SigHexLen   = 64
 	KeyBytes    = 32
+
+	MaxScripts        = 5  // items in scripts.list
+	MaxScriptIDLen    = 12 // bytes of a script id
+	MaxScriptLabelLen = 24 // bytes of a script label (UTF-8)
 )
 
 // Message is implemented by every protocol message.
@@ -143,6 +152,21 @@ type Err struct {
 	Code string `json:"code"`
 }
 
+// ScriptInfo is the public part of a user script: the command line never
+// leaves the PC.
+type ScriptInfo struct {
+	ID    string `json:"id"`
+	Label string `json:"label"`
+}
+
+// Scripts announces the user scripts configured in the agent
+// (agent -> dongle, after every ready; no reply). List must not be nil so
+// that it encodes as [] when there are no scripts.
+type Scripts struct {
+	Head
+	List []ScriptInfo `json:"list"`
+}
+
 // Pair starts pairing (agent -> dongle).
 type Pair struct {
 	Head
@@ -182,6 +206,7 @@ func (*Pair) Type() string        { return TypePair }
 func (*PairChal) Type() string    { return TypePairChal }
 func (*PairConfirm) Type() string { return TypePairConfirm }
 func (*PairOK) Type() string      { return TypePairOK }
+func (*Scripts) Type() string     { return TypeScripts }
 
 // newByType returns an empty message for a type, or nil if unknown.
 func newByType(t string) Message {
@@ -214,6 +239,8 @@ func newByType(t string) Message {
 		return &PairConfirm{}
 	case TypePairOK:
 		return &PairOK{}
+	case TypeScripts:
+		return &Scripts{}
 	}
 	return nil
 }
@@ -232,4 +259,5 @@ var requiredFields = map[string][]string{
 	TypePairChal:    {"nonce"},
 	TypePairConfirm: {"sig"},
 	TypePairOK:      {"sig"},
+	TypeScripts:     {"list"},
 }

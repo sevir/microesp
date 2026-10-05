@@ -38,12 +38,15 @@ export interface MicroEspState {
   cmd_countdown: number;
   last_result: LastResult | null;
   fault: number;
+  /** Raw DP 115 value (compact JSON); parse it with parseScripts. */
+  scripts: string;
+  script_run: string;
 }
 
 export type Code = keyof MicroEspState;
 
 /** Properties the panel may write (mode "rw" in dp.json). */
-export type WritableCode = 'power_on' | 'power_off' | 'reboot' | 'wake_method' | 'cmd_countdown';
+export type WritableCode = 'power_on' | 'power_off' | 'reboot' | 'wake_method' | 'cmd_countdown' | 'script_run';
 
 export const ABILITY_IDS: Record<Code, number> = {
   pc_state: 101,
@@ -60,6 +63,8 @@ export const ABILITY_IDS: Record<Code, number> = {
   cmd_countdown: 112,
   last_result: 113,
   fault: 114,
+  scripts: 115,
+  script_run: 116,
 };
 
 const CODE_BY_ID: Record<string, Code> = Object.fromEntries(
@@ -70,6 +75,8 @@ export const COUNTDOWN_MAX = 60;
 const PERCENT_MAX = 1000;
 const UPTIME_MAX = 999999999;
 const HOSTNAME_MAX = 64;
+const SCRIPTS_MAX_LEN = 255;
+const SCRIPT_ID_MAX = 12;
 
 export const DEFAULT_STATE: MicroEspState = {
   pc_state: 'unknown',
@@ -86,6 +93,8 @@ export const DEFAULT_STATE: MicroEspState = {
   cmd_countdown: 10,
   last_result: null,
   fault: 0,
+  scripts: '',
+  script_run: '',
 };
 
 /** TuyaLink reports wrap values as {value, time}; DP-style sources send them bare. */
@@ -140,6 +149,10 @@ export function normalize(code: Code, raw: unknown): MicroEspState[Code] | undef
       return toInt(v, 0, (1 << FAULT_LABELS.length) - 1);
     case 'pc_hostname':
       return typeof v === 'string' ? v.slice(0, HOSTNAME_MAX) : undefined;
+    case 'scripts':
+      return typeof v === 'string' ? v.slice(0, SCRIPTS_MAX_LEN) : undefined;
+    case 'script_run':
+      return typeof v === 'string' ? v.slice(0, SCRIPT_ID_MAX) : undefined;
     default:
       return undefined;
   }
@@ -163,7 +176,7 @@ export function mergeCodes(state: MicroEspState, values: Record<string, unknown>
   return next;
 }
 
-/** Merge values keyed by abilityId / DP id ("101".."114"). */
+/** Merge values keyed by abilityId / DP id ("101".."116"). */
 export function mergeDps(state: MicroEspState, dps: Record<string, unknown> | undefined | null): MicroEspState {
   if (!dps) return state;
   const byCode: Record<string, unknown> = {};
@@ -220,6 +233,46 @@ export function splitUptime(seconds: number): { d: number; h: number; m: number 
     h: Math.floor((seconds % 86400) / 3600),
     m: Math.floor((seconds % 3600) / 60),
   };
+}
+
+/* User scripts ------------------------------------------------------------ */
+
+export interface Script {
+  id: string;
+  label: string;
+}
+
+export const SCRIPTS_MAX = 5;
+const SCRIPT_ID_RE = /^[a-z0-9_-]{1,12}$/;
+
+/**
+ * User scripts from DP 115: compact JSON [["<id>","<label>"],...] (cdc-v1 §3.1).
+ * Accepts the JSON string or the already parsed array (bare or {value, time}).
+ * Anything malformed yields no scripts; invalid or repeated entries are dropped
+ * and at most SCRIPTS_MAX are kept.
+ */
+export function parseScripts(raw: unknown): Script[] {
+  let v = unwrap(raw);
+  if (typeof v === 'string') {
+    if (!v.trim()) return [];
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return [];
+    }
+  }
+  if (!Array.isArray(v)) return [];
+  const out: Script[] = [];
+  for (const item of v) {
+    if (out.length >= SCRIPTS_MAX) break;
+    if (!Array.isArray(item)) continue;
+    const [id, label] = item;
+    if (typeof id !== 'string' || !SCRIPT_ID_RE.test(id)) continue;
+    if (typeof label !== 'string' || !label.trim()) continue;
+    if (out.some((s) => s.id === id)) continue;
+    out.push({ id, label: label.trim() });
+  }
+  return out;
 }
 
 /* Cloud timers ------------------------------------------------------------ */

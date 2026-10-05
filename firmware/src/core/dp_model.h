@@ -29,6 +29,8 @@ enum {
     DP_CMD_COUNTDOWN = 112,
     DP_LAST_RESULT = 113,
     DP_FAULT = 114,
+    DP_SCRIPTS = 115,
+    DP_SCRIPT_RUN = 116,
 };
 
 /* DP 114 fault bits */
@@ -39,25 +41,33 @@ enum {
 
 typedef enum { DPT_BOOL = 0, DPT_VALUE, DPT_ENUM, DPT_STR, DPT_BITMAP } dpt_t;
 
-#define DPM_STR_MAX 64
+/* String DPs: maximum length (bytes, without NUL) of each one; dpm_desc_t.max holds
+ * the same value. Only string DPs own string storage (dp_model_t.str), so the 255-byte
+ * scripts DP does not grow every slot. */
+#define DPM_HOST_MAX       64  /* 111 pc_hostname */
+#define DPM_SCRIPTS_MAX    255 /* 115 scripts (compact JSON, <= 221 bytes in practice) */
+#define DPM_SCRIPT_RUN_MAX 12  /* 116 script_run (a script id) */
+#define DPM_STR_MAX        DPM_SCRIPTS_MAX    /* longest string DP (buffer sizing) */
+#define DPM_WSTR_MAX       DPM_SCRIPT_RUN_MAX /* longest writable string DP */
+/* Storage for one copy of every string DP (value + NUL each). */
+#define DPM_STR_POOL ((DPM_HOST_MAX + 1) + (DPM_SCRIPTS_MAX + 1) + (DPM_SCRIPT_RUN_MAX + 1))
 
 typedef struct {
     uint8_t id;
     const char *code;
     dpt_t type;
     bool writable;
-    int32_t min, max;          /* value range; enum: 0..count-1; bitmap: 0..mask */
+    int32_t min, max;          /* value range; enum: 0..count-1; bitmap: 0..mask; string: max length */
     int32_t threshold;         /* value: minimum |delta| for an early report */
     uint32_t min_interval_ms;  /* throttle between two reports of this DP */
     uint32_t periodic_ms;      /* value: report any change at most this often (0 = on change) */
 } dpm_desc_t;
 
-#define DPM_COUNT 14
+#define DPM_COUNT 16
 
 typedef struct {
     bool valid, reported_valid, force;
     int32_t v, reported_v;
-    char s[DPM_STR_MAX + 1], reported_s[DPM_STR_MAX + 1];
     uint32_t last_ms;
     uint32_t reports;
 } dpm_slot_t;
@@ -65,6 +75,9 @@ typedef struct {
 typedef struct {
     dpm_slot_t slot[DPM_COUNT];
     uint32_t total_reports;
+    /* string DPs: current values in the first half, last reported values in the second
+     * (each DP at a fixed offset, see dp_model.c) */
+    char str[2 * DPM_STR_POOL];
 } dp_model_t;
 
 const dpm_desc_t *dpm_desc(uint8_t id);
@@ -74,7 +87,8 @@ int dpm_index(uint8_t id);
 void dpm_init(dp_model_t *m);
 /* Set a bool/value/enum/bitmap DP (clamped to its range). */
 void dpm_set(dp_model_t *m, uint8_t id, int32_t v);
-void dpm_set_str(dp_model_t *m, uint8_t id, const char *s);
+/* Set a string DP. Returns false (DP unchanged) if s is longer than the DP maximum. */
+bool dpm_set_str(dp_model_t *m, uint8_t id, const char *s);
 int32_t dpm_get(const dp_model_t *m, uint8_t id);
 const char *dpm_get_str(const dp_model_t *m, uint8_t id);
 /* Report every valid DP at the next collect (cloud (re)connected). */
@@ -100,6 +114,9 @@ const dpm_desc_t *dpm_desc_by_code(const char *code);
 
 /* Validate a DP written from the cloud. Returns 0 and the normalised value, or -1. */
 int dpm_decode_write(uint8_t id, dpt_t type, int32_t raw, int32_t *out);
+/* Same for a writable string DP: 0 if s is acceptable (length within the DP maximum,
+ * DP-specific charset: script_run is "" or [a-z0-9_-]{1,12}), -1 otherwise. */
+int dpm_decode_write_str(uint8_t id, const char *s);
 
 /* {"101":4,"112":"host",...} of the current values (debug / CLI). Returns length. */
 int dpm_to_json(const dp_model_t *m, char *buf, size_t n);

@@ -62,7 +62,8 @@ static struct {
     uint8_t ids[DPM_COUNT];
     int32_t v[DPM_COUNT];
     bool forced[DPM_COUNT];
-    char str[DPM_STR_MAX + 1];
+    const char *s[DPM_COUNT]; /* string DPs: snapshot in str[], NULL otherwise */
+    char str[DPM_STR_POOL];   /* every string DP fits once (each <= its maximum) */
 } s_inflight;
 static uint32_t s_backoff_until, s_msg_counter;
 static struct {
@@ -278,7 +279,7 @@ void cloud_on_event(const app_ev_t *ev)
         if (s_inflight.busy && ev->v == s_inflight.msg_id) {
             s_inflight.busy = false;
             for (int i = 0; i < s_inflight.n; i++)
-                dpm_mark_reported_as(&g_app.dpm, s_inflight.ids[i], now, s_inflight.v[i], s_inflight.str);
+                dpm_mark_reported_as(&g_app.dpm, s_inflight.ids[i], now, s_inflight.v[i], s_inflight.s[i]);
             s_st.reports_ok++;
             s_st.last_report_ms = now;
             PR_DEBUG("property/report of %d DP(s) acknowledged", s_inflight.n);
@@ -288,8 +289,10 @@ void cloud_on_event(const app_ev_t *ev)
 }
 
 /* A validated property write from the cloud (id and value already range-checked). */
-static void apply_write(uint8_t id, int32_t v)
+static void apply_write(const tyl_write_t *w)
 {
+    uint8_t id = w->id;
+    int32_t v = w->v;
     switch (id) {
     case DP_POWER_ON:
         if (v) wake_power_on("cloud power_on");
@@ -315,6 +318,13 @@ static void apply_write(uint8_t id, int32_t v)
         power_set_countdown(v);
         PR_NOTICE("cmd_countdown = %ld s", (long)v);
         break;
+    case DP_SCRIPT_RUN:
+        /* push button: "" is a no-op (e.g. the panel resetting it); anything else runs
+         * that script, the result goes to DP 113 */
+        if (w->s[0]) scripts_run(w->s, "cloud script_run");
+        dpm_set_str(&g_app.dpm, DP_SCRIPT_RUN, "");
+        dpm_force(&g_app.dpm, DP_SCRIPT_RUN);
+        break;
     default: break;
     }
 }
@@ -333,8 +343,11 @@ void cloud_on_rx(const app_ev_t *ev)
         }
         s_st.rx_cmds++;
         for (int i = 0; i < set.nwrites; i++) {
-            PR_NOTICE("cloud: set %s = %ld", dpm_desc(set.w[i].id)->code, (long)set.w[i].v);
-            apply_write(set.w[i].id, set.w[i].v);
+            if (dpm_desc(set.w[i].id)->type == DPT_STR)
+                PR_NOTICE("cloud: set %s = \"%s\"", dpm_desc(set.w[i].id)->code, set.w[i].s);
+            else
+                PR_NOTICE("cloud: set %s = %ld", dpm_desc(set.w[i].id)->code, (long)set.w[i].v);
+            apply_write(&set.w[i]);
         }
         if (set.nrejected) {
             s_st.rx_rejected += (uint32_t)set.nrejected;
@@ -386,6 +399,7 @@ void cloud_tick(uint32_t now)
     int64_t t = mhal_time_ms();
     if (!t) return; /* never happens while connected (the clock is needed to connect) */
     tyl_prop_t props[DPM_COUNT];
+    size_t soff = 0;
     for (int i = 0; i < n; i++) {
         int k = dpm_index(ids[i]);
         s_inflight.forced[i] = g_app.dpm.slot[k].force;
@@ -393,14 +407,18 @@ void cloud_tick(uint32_t now)
         s_inflight.ids[i] = ids[i];
         s_inflight.v[i] = dpm_get(&g_app.dpm, ids[i]);
         props[i] = (tyl_prop_t){ids[i], s_inflight.v[i], NULL};
+        s_inflight.s[i] = NULL;
         if (dpm_desc(ids[i])->type == DPT_STR) {
-            snprintf(s_inflight.str, sizeof(s_inflight.str), "%s", dpm_get_str(&g_app.dpm, ids[i]));
-            props[i].s = s_inflight.str;
+            /* each string DP is <= its maximum, so all of them fit the pool */
+            char *dst = s_inflight.str + soff;
+            int w = snprintf(dst, sizeof(s_inflight.str) - soff, "%s", dpm_get_str(&g_app.dpm, ids[i]));
+            soff += (size_t)w + 1;
+            props[i].s = s_inflight.s[i] = dst;
         }
     }
     s_inflight.n = n;
     s_inflight.at = now;
-    static char json[1536]; /* app task only; esp-mqtt copies it into the outbox */
+    static char json[TYL_REPORT_MAX]; /* app task only; esp-mqtt copies it into the outbox */
     char mid[TYL_MSGID_MAX + 1];
     next_msgid(mid);
     int len = tyl_build_report(props, n, mid, t, json, sizeof(json));

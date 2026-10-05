@@ -43,20 +43,25 @@ static void set_online(link_t *l, bool on)
     emit(l, &ev);
 }
 
+static void resolve_pending(link_t *l, int c, const char *why)
+{
+    l->pend[c].pending = false;
+    link_ev_t ev = {.type = LINK_EV_ACK_TIMEOUT};
+    ev.ack.id = l->pend[c].id;
+    ev.ack.ok = false;
+    ev.ack.err = why;
+    emit(l, &ev);
+}
+
 static void drop_session(link_t *l)
 {
     l->st = LINK_IDLE;
-    if (l->cmd_pending) {
-        /* The session that should ack this cmd is gone (port closed, agent restarted,
-         * re-paired): an ack can no longer arrive, so resolve it now instead of
-         * leaving the power flow waiting forever. */
-        l->cmd_pending = false;
-        link_ev_t ev = {.type = LINK_EV_ACK_TIMEOUT};
-        ev.ack.id = l->cmd_pending_id;
-        ev.ack.ok = false;
-        ev.ack.err = "session_closed";
-        emit(l, &ev);
-    }
+    /* The session that should ack these cmds is gone (port closed, agent restarted,
+     * re-paired): an ack can no longer arrive, so resolve them now instead of leaving
+     * the power / script flows waiting forever. The script list is kept (RAM only):
+     * the panel hides it while agent_online is false. */
+    for (int c = 0; c < LINK_CMD__CLASSES; c++)
+        if (l->pend[c].pending) resolve_pending(l, c, "session_closed");
     set_online(l, false);
 }
 
@@ -238,7 +243,7 @@ static void on_auth(link_t *l, const cJSON *o, uint32_t now)
     }
     l->st = LINK_READY;
     l->cmd_id = 0;
-    l->cmd_pending = false;
+    memset(l->pend, 0, sizeof(l->pend));
     l->last_rx_ms = now;
     l->sessions++;
     send_line(l, "{\"t\":\"ready\"}");
@@ -275,12 +280,113 @@ static void on_ack(link_t *l, const cJSON *o)
     const cJSON *err = cJSON_GetObjectItemCaseSensitive(o, "err");
     if (!get_int(o, "id", 0, 4294967295.0, &id) || !cJSON_IsBool(ok)) { send_err(l, "bad_msg"); return; }
     if (err && (!cJSON_IsString(err) || strlen(err->valuestring) > 32)) { send_err(l, "bad_msg"); return; }
-    if (!l->cmd_pending || (uint32_t)id != l->cmd_pending_id) return; /* stale / unknown: ignored */
-    l->cmd_pending = false;
+    int c = 0;
+    while (c < LINK_CMD__CLASSES && !(l->pend[c].pending && l->pend[c].id == (uint32_t)id)) c++;
+    if (c == LINK_CMD__CLASSES) return; /* stale / unknown: ignored */
+    l->pend[c].pending = false;
     link_ev_t ev = {.type = LINK_EV_ACK};
     ev.ack.id = (uint32_t)id;
     ev.ack.ok = cJSON_IsTrue(ok);
     ev.ack.err = err ? err->valuestring : "";
+    emit(l, &ev);
+}
+
+/* ------------------------------------------------------------------ scripts (§3.1) */
+bool link_valid_script_id(const char *id)
+{
+    size_t n = id ? strlen(id) : 0;
+    if (n < 1 || n > LINK_SCRIPT_ID_MAX) return false;
+    for (size_t i = 0; i < n; i++) {
+        char c = id[i];
+        if (!((c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '-')) return false;
+    }
+    return true;
+}
+
+/* Strict UTF-8 (no overlongs, no surrogates, <= U+10FFFF) without control characters
+ * (C0, DEL, C1 U+0080..U+009F), '"' or '\' -- the same rule as the agent. */
+bool link_valid_script_label(const char *label)
+{
+    size_t n = label ? strlen(label) : 0;
+    if (n < 1 || n > LINK_SCRIPT_LABEL_MAX) return false;
+    const unsigned char *p = (const unsigned char *)label, *end = p + n;
+    while (p < end) {
+        unsigned c = *p;
+        if (c < 0x80) {
+            if (c < 0x20 || c == 0x7f || c == '"' || c == '\\') return false;
+            p++;
+            continue;
+        }
+        int len;
+        uint32_t cp, min;
+        if (c >= 0xc2 && c <= 0xdf) len = 2, cp = c & 0x1f, min = 0x80;
+        else if (c >= 0xe0 && c <= 0xef) len = 3, cp = c & 0x0f, min = 0x800;
+        else if (c >= 0xf0 && c <= 0xf4) len = 4, cp = c & 0x07, min = 0x10000;
+        else return false;
+        if (end - p < len) return false;
+        for (int k = 1; k < len; k++) {
+            if ((p[k] & 0xc0) != 0x80) return false;
+            cp = (cp << 6) | (p[k] & 0x3f);
+        }
+        if (cp < min || cp > 0x10ffff || (cp >= 0xd800 && cp <= 0xdfff)) return false;
+        if (cp >= 0x80 && cp <= 0x9f) return false; /* C1 controls */
+        p += len;
+    }
+    return true;
+}
+
+const link_script_t *link_script_find(const link_t *l, const char *id)
+{
+    for (int i = 0; id && i < l->nscripts; i++)
+        if (!strcmp(l->scripts[i].id, id)) return &l->scripts[i];
+    return NULL;
+}
+
+int link_scripts_json(const link_t *l, char *out, size_t cap)
+{
+    if (!out || !cap) return -1;
+    size_t o = 0;
+    int w = snprintf(out, cap, "[");
+    for (int i = 0; i < l->nscripts && w >= 0 && (size_t)w < cap - o; i++) {
+        o += (size_t)w;
+        w = snprintf(out + o, cap - o, "%s[\"%s\",\"%s\"]", i ? "," : "", l->scripts[i].id, l->scripts[i].label);
+    }
+    if (w < 0 || (size_t)w >= cap - o) {
+        out[0] = 0;
+        return -1;
+    }
+    o += (size_t)w;
+    w = snprintf(out + o, cap - o, "]");
+    if (w < 0 || (size_t)w >= cap - o) {
+        out[0] = 0;
+        return -1;
+    }
+    return (int)(o + (size_t)w);
+}
+
+static void on_scripts(link_t *l, const cJSON *o)
+{
+    const cJSON *list = cJSON_GetObjectItemCaseSensitive(o, "list");
+    if (!cJSON_IsArray(list) || cJSON_GetArraySize(list) > LINK_MAX_SCRIPTS) { send_err(l, "bad_msg"); return; }
+    link_script_t tmp[LINK_MAX_SCRIPTS];
+    int n = 0;
+    const cJSON *it;
+    cJSON_ArrayForEach(it, list)
+    {
+        const char *id = cJSON_IsObject(it) ? get_str(it, "id") : NULL;
+        const char *label = cJSON_IsObject(it) ? get_str(it, "label") : NULL;
+        if (!link_valid_script_id(id) || !link_valid_script_label(label)) { send_err(l, "bad_msg"); return; }
+        for (int k = 0; k < n; k++)
+            if (!strcmp(tmp[k].id, id)) { send_err(l, "bad_msg"); return; } /* duplicate id */
+        snprintf(tmp[n].id, sizeof(tmp[n].id), "%s", id);
+        snprintf(tmp[n].label, sizeof(tmp[n].label), "%s", label);
+        n++;
+    }
+    /* valid: replace the previous list (an invalid one above kept it) */
+    memcpy(l->scripts, tmp, sizeof(tmp[0]) * (size_t)n);
+    l->nscripts = n;
+    l->scripts_known = true;
+    link_ev_t ev = {.type = LINK_EV_SCRIPTS};
     emit(l, &ev);
 }
 
@@ -352,7 +458,7 @@ void link_rx_line(link_t *l, const char *line, size_t len, uint32_t now_ms)
         cJSON_Delete(o);
         return;
     }
-    bool session_msg = !strcmp(t, "tele") || !strcmp(t, "hb") || !strcmp(t, "ack");
+    bool session_msg = !strcmp(t, "tele") || !strcmp(t, "hb") || !strcmp(t, "ack") || !strcmp(t, "scripts");
     if (session_msg) {
         if (l->st != LINK_READY) {
             send_err(l, "unauth");
@@ -361,6 +467,7 @@ void link_rx_line(link_t *l, const char *line, size_t len, uint32_t now_ms)
             set_online(l, true);
             if (!strcmp(t, "tele")) on_tele(l, o);
             else if (!strcmp(t, "ack")) on_ack(l, o);
+            else if (!strcmp(t, "scripts")) on_scripts(l, o);
             /* hb: liveness only */
         }
     } else if (!strcmp(t, "hello")) {
@@ -381,14 +488,9 @@ void link_rx_line(link_t *l, const char *line, size_t len, uint32_t now_ms)
 void link_tick(link_t *l, uint32_t now_ms)
 {
     if (l->online && ELAPSED(now_ms, l->last_rx_ms) >= LINK_ONLINE_TIMEOUT) set_online(l, false);
-    if (l->cmd_pending && ELAPSED(now_ms, l->cmd_sent_ms) >= LINK_ACK_TIMEOUT) {
-        l->cmd_pending = false;
-        link_ev_t ev = {.type = LINK_EV_ACK_TIMEOUT};
-        ev.ack.id = l->cmd_pending_id;
-        ev.ack.ok = false;
-        ev.ack.err = "timeout";
-        emit(l, &ev);
-    }
+    for (int c = 0; c < LINK_CMD__CLASSES; c++)
+        if (l->pend[c].pending && ELAPSED(now_ms, l->pend[c].sent_ms) >= LINK_ACK_TIMEOUT)
+            resolve_pending(l, c, "timeout");
     if (l->pair_mode && ELAPSED(now_ms, l->pair_until_ms) >= 0) pair_end(l);
 }
 
@@ -401,19 +503,31 @@ bool link_send_notice(link_t *l, const char *action, int in_s)
     return true;
 }
 
+bool link_cmd_pending(const link_t *l, link_cmd_class_t c)
+{
+    return (unsigned)c < LINK_CMD__CLASSES && l->pend[c].pending;
+}
+
 uint32_t link_send_cmd(link_t *l, const char *action, uint32_t now_ms)
 {
-    if (l->st != LINK_READY || l->cmd_pending || !l->has_key) return 0;
-    if (strcmp(action, "shutdown") && strcmp(action, "reboot")) return 0;
+    if (!action || l->st != LINK_READY || !l->has_key) return 0;
+    link_cmd_class_t c;
+    size_t pl = strlen(LINK_SCRIPT_PREFIX);
+    if (!strcmp(action, "shutdown") || !strcmp(action, "reboot")) c = LINK_CMD_POWER;
+    else if (!strncmp(action, LINK_SCRIPT_PREFIX, pl) && link_script_find(l, action + pl)) c = LINK_CMD_SCRIPT;
+    else return 0;
+    if (l->pend[c].pending) return 0;
     uint32_t id = ++l->cmd_id;
-    char msg[96], sig[MC_SIG_HEX + 1], out[192];
+    /* "cmd|<u32>|<action>|<na>|<nd>" and the line: sized for LINK_ACTION_MAX */
+    char msg[16 + 10 + LINK_ACTION_MAX + 2 * MC_NONCE_HEX], sig[MC_SIG_HEX + 1],
+        out[64 + 10 + LINK_ACTION_MAX + MC_SIG_HEX];
     snprintf(msg, sizeof(msg), "cmd|%lu|%s|%s|%s", (unsigned long)id, action, l->na, l->nd);
     mc_sign(l->key, msg, sig);
     snprintf(out, sizeof(out), "{\"t\":\"cmd\",\"id\":%lu,\"action\":\"%s\",\"sig\":\"%s\"}", (unsigned long)id, action,
              sig);
-    l->cmd_pending = true;
-    l->cmd_pending_id = id;
-    l->cmd_sent_ms = now_ms;
+    l->pend[c].pending = true;
+    l->pend[c].id = id;
+    l->pend[c].sent_ms = now_ms;
     send_line(l, out);
     return id;
 }

@@ -15,7 +15,7 @@
  *   publish   model/get / subscribe model/get_response, property/report_response
  * Property codes and types are those of dp_model.c (the numeric ids are the abilityIds):
  * bool -> JSON bool, value/bitmap -> JSON integer, enum -> JSON string (range name),
- * string -> JSON string.
+ * string -> JSON string (escaped; e.g. DP 115 scripts carries compact JSON as a string).
  */
 #pragma once
 #include <stdbool.h>
@@ -35,6 +35,10 @@ extern "C" {
 #define TYL_PASS_HEX    64
 #define TYL_USER_MAX    (TYL_ID_MAX + 80)
 #define TYL_TOPIC_MAX   (TYL_ID_MAX + 48)
+/* property/report payload buffer: every DP at its widest value (64-byte hostname of
+ * control characters, each escaped to 6 bytes, 221-byte scripts list) fits with margin, and
+ * with the MQTT header stays within the esp-mqtt 2048-byte buffer (hal_cloud.c). */
+#define TYL_REPORT_MAX  1920
 #define TYL_CODE_OK     0
 #define TYL_CODE_FAIL   1 /* generic failure (invalid property, unsupported action) */
 
@@ -71,8 +75,8 @@ typedef struct {
     const char *s;
 } tyl_prop_t;
 
-/* property/report payload. Returns the length, or -1 (unknown DP, bad enum value or
- * buffer too small). */
+/* property/report payload. Returns the length, or -1 (unknown DP, bad enum value,
+ * string longer than the DP maximum or buffer too small). */
 int tyl_build_report(const tyl_prop_t *p, int n, const char *msgid, int64_t time_ms, char *out, size_t cap);
 /* {"msgId":..,"time":..,"code":N} for property/set_response and action/execute_response */
 int tyl_build_response(const char *msgid, int64_t time_ms, int code, char *out, size_t cap);
@@ -91,7 +95,8 @@ const char *tyl_wres_name(tyl_wres_t r);
 
 typedef struct {
     uint8_t id;
-    int32_t v; /* normalised (bool 0/1, enum index) */
+    int32_t v;                  /* normalised (bool 0/1, enum index); 0 for strings */
+    char s[DPM_WSTR_MAX + 1];   /* string DPs (validated by dpm_decode_write_str) */
 } tyl_write_t;
 
 #define TYL_MAX_WRITES DPM_COUNT
@@ -107,7 +112,8 @@ typedef struct {
 /* Parse property/set. 0 = valid envelope (msgId 1..32 chars + "data" object; the
  * accepted writes are in w[], rejected properties counted), -1 = malformed message
  * (no answer possible). Unknown codes, read-only properties, wrong JSON types and
- * out-of-range values are rejected one by one; the valid ones are still applied. */
+ * out-of-range values (strings: too long or bad charset) are rejected one by one; the
+ * valid ones are still applied. */
 int tyl_parse_set(const char *json, size_t len, tyl_set_t *out);
 /* msgId of any message (action/execute). 0 / -1. */
 int tyl_parse_msgid(const char *json, size_t len, char msgid[TYL_MSGID_MAX + 1]);

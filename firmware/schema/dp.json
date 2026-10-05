@@ -191,6 +191,24 @@
       ],
       "maxlen": 4,
       "source": "dongle"
+    },
+    {
+      "id": 115,
+      "code": "scripts",
+      "type": "string",
+      "mode": "ro",
+      "maxlen": 255,
+      "note": "user scripts reported by the agent (cdc-v1 §3.1) as compact JSON [[\"<id>\",\"<label>\"],...], 0..5 items, at most 221 bytes; not reported until the agent sends its list",
+      "source": "agent"
+    },
+    {
+      "id": 116,
+      "code": "script_run",
+      "type": "string",
+      "mode": "rw",
+      "maxlen": 12,
+      "note": "push button: '<id>' of a script in DP 115 -> cmd script:<id> to the agent (result in DP 113: ok / cmd_rejected / agent_offline); dongle reports it back to ''",
+      "source": "dongle"
     }
   ]
 }

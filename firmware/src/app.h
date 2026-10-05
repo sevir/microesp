@@ -21,6 +21,7 @@
 #include "mesp_version.h"
 #include "pc_state.h"
 #include "powercmd.h"
+#include "scriptcmd.h"
 #include "wake_fsm.h"
 
 typedef enum {
@@ -50,6 +51,7 @@ typedef struct {
     /* modules (all owned by the app task) */
     link_t link;
     pwr_t pwr;
+    scr_t scr;
     wake_t wake;
     pcs_sm_t pcs;
     dp_model_t dpm;

@@ -1,6 +1,6 @@
 /*
  * MicroESP — agent link glue (US-0022): connects the pure-C cdc-v1 session
- * (core/link_proto.c) to the CDC port, NVS, DPs and the power-command flow.
+ * (core/link_proto.c) to the CDC port, NVS, DPs and the power-command and script flows.
  *
  * Lines starting with '!' are CLI (cli.c); every other line is protocol.
  * The session is dropped as soon as the host closes the port (DTR low).
@@ -62,12 +62,17 @@ static void cb_event(void *ctx, const link_ev_t *ev)
         break;
     case LINK_EV_ACK:
         PR_NOTICE("agent: ack id=%lu ok=%d err=%s", (unsigned long)ev->ack.id, ev->ack.ok, ev->ack.err);
-        if (ev->ack.ok && g_app.pwr.action == PWR_SHUTDOWN) g_app.shutdown_expected = true;
+        /* only the ack of the shutdown cmd itself (a script ack may arrive meanwhile) */
+        if (ev->ack.ok && g_app.pwr.st == PWR_WAIT_ACK && g_app.pwr.action == PWR_SHUTDOWN &&
+            ev->ack.id == g_app.pwr.cmd_id)
+            g_app.shutdown_expected = true;
         pwr_on_ack(&g_app.pwr, ev->ack.id, ev->ack.ok);
+        scr_on_ack(&g_app.scr, ev->ack.id, ev->ack.ok);
         break;
     case LINK_EV_ACK_TIMEOUT:
         PR_WARN("agent: no ack for cmd id=%lu (%s)", (unsigned long)ev->ack.id, ev->ack.err);
         pwr_on_ack_timeout(&g_app.pwr, ev->ack.id);
+        scr_on_ack_timeout(&g_app.scr, ev->ack.id);
         break;
     case LINK_EV_PAIRED:
         PR_NOTICE("agent: PAIRED, new key stored");
@@ -79,6 +84,9 @@ static void cb_event(void *ctx, const link_ev_t *ev)
         break;
     case LINK_EV_PAIR_END:
         pairing_on_end();
+        break;
+    case LINK_EV_SCRIPTS:
+        scripts_on_list();
         break;
     case LINK_EV_PROTO_ERR:
         PR_DEBUG("agent: sent err %s", ev->err_code);

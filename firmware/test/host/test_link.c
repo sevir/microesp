@@ -198,6 +198,10 @@ static void test_unauth_before_ready(void)
     assert_err("unauth");
     rx_vmsg(8, 100);
     assert_err("unauth");
+    rx_vmsg(15, 100); /* scripts before ready */
+    assert_err("unauth");
+    TEST_ASSERT_EQUAL(0, h_count_ev(&H, LINK_EV_SCRIPTS));
+    TEST_ASSERT_FALSE(H.l.scripts_known);
     rx_vmsg(2, 100); /* auth without hello */
     assert_err("unauth");
     TEST_ASSERT_EQUAL(0, h_count_ev(&H, LINK_EV_TELE));
@@ -406,7 +410,9 @@ static void test_invalid_vectors(void)
 {
     session_up(); /* READY, so range checks (not unauth) apply */
     cJSON *inv = cJSON_GetObjectItem(cJSON_GetObjectItem(vectors(), "messages"), "invalid");
-    const char *expect[] = {"bad_msg", "bad_msg", "bad_msg", "unsupported_version", "bad_msg", "too_long", "bad_msg"};
+    const char *expect[] = {"bad_msg", "bad_msg", "bad_msg", "unsupported_version", "bad_msg", "too_long", "bad_msg",
+                            /* scripts: no list, > 5, bad id, id > 12, empty label, label > 24, quote, dup */
+                            "bad_msg", "bad_msg", "bad_msg", "bad_msg", "bad_msg", "bad_msg", "bad_msg", "bad_msg"};
     int i = 0;
     cJSON *it;
     cJSON_ArrayForEach(it, inv)
@@ -418,16 +424,17 @@ static void test_invalid_vectors(void)
         TEST_ASSERT_EQUAL_MESSAGE(1, H.nout, cJSON_GetObjectItem(it, "why")->valuestring);
         assert_err(expect[i]);
         TEST_ASSERT_EQUAL(0, h_count_ev(&H, LINK_EV_TELE));
+        TEST_ASSERT_EQUAL(0, h_count_ev(&H, LINK_EV_SCRIPTS));
         i++;
     }
-    TEST_ASSERT_EQUAL(7, i);
+    TEST_ASSERT_EQUAL(15, i);
     TEST_ASSERT_TRUE(link_ready(&H.l)); /* garbage does not kill the session */
 }
 
 static void test_dongle_types_from_agent_rejected(void)
 {
     session_up();
-    int idx[] = {1, 3, 6, 7, 10, 12, 14}; /* welcome ready notice cmd err pair_chal pair_ok */
+    int idx[] = {1, 3, 6, 7, 10, 12, 14, 17}; /* welcome ready notice cmd err pair_chal pair_ok cmd(script) */
     for (size_t i = 0; i < sizeof(idx) / sizeof(idx[0]); i++) {
         h_clear(&H);
         rx_vmsg(idx[i], 3000);
@@ -447,6 +454,168 @@ static void test_close_session(void)
     assert_err("unauth");
     TEST_ASSERT_EQUAL(0, link_send_cmd(&H.l, "reboot", 5000));
     TEST_ASSERT_TRUE(H.l.has_key); /* key kept */
+}
+
+/* ------------------------------------------------------------------ scripts (§3.1) */
+static const char *scripts_json(void)
+{
+    static char b[LINK_SCRIPTS_JSON_MAX + 1];
+    TEST_ASSERT_TRUE(link_scripts_json(&H.l, b, sizeof(b)) >= 0);
+    return b;
+}
+
+static void test_scripts_vectors_and_script_cmd_sig(void)
+{
+    session_up();
+    TEST_ASSERT_FALSE(H.l.scripts_known);
+    h_clear(&H);
+    rx_vmsg(15, 1200); /* scripts backup + docker-up */
+    TEST_ASSERT_EQUAL(0, H.nout); /* no reply on success */
+    TEST_ASSERT_EQUAL(1, h_count_ev(&H, LINK_EV_SCRIPTS));
+    TEST_ASSERT_TRUE(H.l.scripts_known);
+    TEST_ASSERT_EQUAL(2, H.l.nscripts);
+    TEST_ASSERT_EQUAL_STRING("[[\"backup\",\"Backup NAS\"],[\"docker-up\",\"Docker up\"]]", scripts_json());
+    TEST_ASSERT_NOT_NULL(link_script_find(&H.l, "docker-up"));
+    TEST_ASSERT_NULL(link_script_find(&H.l, "nope"));
+    /* ids 1 and 2 (power), then the script vector: id 3 script:backup */
+    TEST_ASSERT_EQUAL_UINT32(1, link_send_cmd(&H.l, "shutdown", 2000));
+    rx_vmsg(8, 2100);
+    TEST_ASSERT_EQUAL_UINT32(2, link_send_cmd(&H.l, "reboot", 2200));
+    rx_vmsg(9, 2300);
+    TEST_ASSERT_EQUAL_UINT32(0, link_send_cmd(&H.l, "script:nope", 2400));   /* not in the list */
+    TEST_ASSERT_EQUAL_UINT32(0, link_send_cmd(&H.l, "script:", 2400));
+    TEST_ASSERT_EQUAL_UINT32(0, link_send_cmd(&H.l, "script:Backup", 2400));
+    TEST_ASSERT_EQUAL_UINT32(0, link_send_cmd(&H.l, "backup", 2400));
+    TEST_ASSERT_EQUAL_UINT32(3, link_send_cmd(&H.l, "script:backup", 2500));
+    assert_fields(vmsg_obj(17), h_last(&H)); /* id 3, action, vector sig */
+    cJSON *c3 = cJSON_GetArrayItem(cJSON_GetObjectItem(cJSON_GetObjectItem(vectors(), "session"), "cmds"), 2);
+    cJSON *g = cJSON_Parse(h_last(&H));
+    TEST_ASSERT_EQUAL_STRING(cJSON_GetObjectItem(c3, "sig")->valuestring, cJSON_GetObjectItem(g, "sig")->valuestring);
+    cJSON_Delete(g);
+    TEST_ASSERT_TRUE(link_cmd_pending(&H.l, LINK_CMD_SCRIPT));
+    TEST_ASSERT_EQUAL_UINT32(0, link_send_cmd(&H.l, "script:docker-up", 2600)); /* one script cmd at a time */
+    h_clear(&H);
+    h_rx(&H, "{\"t\":\"ack\",\"id\":3,\"ok\":true}", 2700);
+    const link_ev_t *e = h_find_ev(&H, LINK_EV_ACK);
+    TEST_ASSERT_NOT_NULL(e);
+    TEST_ASSERT_EQUAL_UINT32(3, e->ack.id);
+    TEST_ASSERT_FALSE(link_cmd_pending(&H.l, LINK_CMD_SCRIPT));
+    /* empty list vector: valid, replaces the list */
+    h_clear(&H);
+    rx_vmsg(16, 3000);
+    TEST_ASSERT_EQUAL(0, H.nout);
+    TEST_ASSERT_EQUAL(1, h_count_ev(&H, LINK_EV_SCRIPTS));
+    TEST_ASSERT_EQUAL(0, H.l.nscripts);
+    TEST_ASSERT_TRUE(H.l.scripts_known);
+    TEST_ASSERT_EQUAL_STRING("[]", scripts_json());
+    TEST_ASSERT_EQUAL_UINT32(0, link_send_cmd(&H.l, "script:backup", 3100));
+}
+
+/* A script cmd and a power cmd can await their acks at the same time: a script run
+ * never blocks a shutdown at the end of its countdown. */
+static void test_script_and_power_cmds_independent(void)
+{
+    session_up();
+    rx_vmsg(15, 1200);
+    TEST_ASSERT_EQUAL_UINT32(1, link_send_cmd(&H.l, "script:backup", 2000));
+    TEST_ASSERT_EQUAL_UINT32(2, link_send_cmd(&H.l, "shutdown", 2500));
+    TEST_ASSERT_TRUE(link_cmd_pending(&H.l, LINK_CMD_POWER));
+    TEST_ASSERT_TRUE(link_cmd_pending(&H.l, LINK_CMD_SCRIPT));
+    h_clear(&H);
+    h_rx(&H, "{\"t\":\"ack\",\"id\":2,\"ok\":true}", 2600); /* acks in any order */
+    TEST_ASSERT_EQUAL_UINT32(2, h_find_ev(&H, LINK_EV_ACK)->ack.id);
+    TEST_ASSERT_FALSE(link_cmd_pending(&H.l, LINK_CMD_POWER));
+    TEST_ASSERT_TRUE(link_cmd_pending(&H.l, LINK_CMD_SCRIPT));
+    /* the script cmd times out on its own clock (sent at 2000) */
+    h_rx(&H, "{\"t\":\"hb\"}", 11000);
+    link_tick(&H.l, 11999);
+    TEST_ASSERT_EQUAL(0, h_count_ev(&H, LINK_EV_ACK_TIMEOUT));
+    link_tick(&H.l, 12000);
+    TEST_ASSERT_EQUAL(1, h_count_ev(&H, LINK_EV_ACK_TIMEOUT));
+    TEST_ASSERT_EQUAL_UINT32(1, h_find_ev(&H, LINK_EV_ACK_TIMEOUT)->ack.id);
+    /* both pending when the session drops: both resolved; the list is kept */
+    TEST_ASSERT_EQUAL_UINT32(3, link_send_cmd(&H.l, "script:docker-up", 13000));
+    TEST_ASSERT_EQUAL_UINT32(4, link_send_cmd(&H.l, "reboot", 13000));
+    h_clear(&H);
+    link_close_session(&H.l);
+    TEST_ASSERT_EQUAL(2, h_count_ev(&H, LINK_EV_ACK_TIMEOUT));
+    TEST_ASSERT_EQUAL(2, H.l.nscripts);
+    TEST_ASSERT_TRUE(H.l.scripts_known);
+    TEST_ASSERT_EQUAL_UINT32(0, link_send_cmd(&H.l, "script:backup", 14000)); /* no session */
+}
+
+static void test_scripts_invalid_keeps_previous_list(void)
+{
+    session_up();
+    rx_vmsg(15, 1200);
+    const char *bad[] = {
+        "{\"t\":\"scripts\",\"list\":{}}",
+        "{\"t\":\"scripts\",\"list\":[\"backup\"]}",
+        "{\"t\":\"scripts\",\"list\":[{\"id\":\"a\"}]}",
+        "{\"t\":\"scripts\",\"list\":[{\"label\":\"x\"}]}",
+        "{\"t\":\"scripts\",\"list\":[{\"id\":1,\"label\":\"x\"}]}",
+        "{\"t\":\"scripts\",\"list\":[{\"id\":\"a\",\"label\":7}]}",
+        "{\"t\":\"scripts\",\"list\":[{\"id\":\"\",\"label\":\"x\"}]}",
+        "{\"t\":\"scripts\",\"list\":[{\"id\":\"a.b\",\"label\":\"x\"}]}",
+        "{\"t\":\"scripts\",\"list\":[{\"id\":\"a\",\"label\":\"back\\\\slash\"}]}",
+        "{\"t\":\"scripts\",\"list\":[{\"id\":\"a\",\"label\":\"tab\\there\"}]}",
+        "{\"t\":\"scripts\",\"list\":[{\"id\":\"a\",\"label\":\"del\x7f\"}]}",
+        "{\"t\":\"scripts\",\"list\":[{\"id\":\"a\",\"label\":\"c1\\u0085\"}]}",
+        "{\"t\":\"scripts\",\"list\":[{\"id\":\"a\",\"label\":\"q\\u0022\"}]}",
+        "{\"t\":\"scripts\",\"list\":[{\"id\":\"a\",\"label\":\"bad\xc3\"}]}",
+        "{\"t\":\"scripts\",\"list\":[{\"id\":\"a\",\"label\":\"overlong\xc0\xaf\"}]}",
+        "{\"t\":\"scripts\",\"list\":[{\"id\":\"a\",\"label\":\"surrogate\xed\xa0\x80\"}]}",
+        "{\"t\":\"scripts\",\"list\":[{\"id\":\"a\",\"label\":\"\xc3\xb1\xc3\xb1\xc3\xb1\xc3\xb1\xc3\xb1\xc3\xb1\xc3\xb1"
+        "\xc3\xb1\xc3\xb1\xc3\xb1\xc3\xb1\xc3\xb1x\"}]}", /* 25 bytes */
+    };
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        h_clear(&H);
+        h_rx(&H, bad[i], 2000);
+        TEST_ASSERT_EQUAL_MESSAGE(1, H.nout, bad[i]);
+        assert_err("bad_msg");
+        TEST_ASSERT_EQUAL_MESSAGE(0, h_count_ev(&H, LINK_EV_SCRIPTS), bad[i]);
+        TEST_ASSERT_EQUAL_MESSAGE(2, H.l.nscripts, bad[i]);
+    }
+    TEST_ASSERT_EQUAL_STRING("[[\"backup\",\"Backup NAS\"],[\"docker-up\",\"Docker up\"]]", scripts_json());
+    TEST_ASSERT_TRUE(link_ready(&H.l));
+    /* accepted: 24 bytes of UTF-8, extra fields ignored, ids at 12 chars */
+    h_clear(&H);
+    h_rx(&H,
+         "{\"t\":\"scripts\",\"list\":[{\"id\":\"abcdefghijk_\",\"label\":\"\xc3\xb1\xc3\xb1\xc3\xb1\xc3\xb1\xc3\xb1\xc3"
+         "\xb1\xc3\xb1\xc3\xb1\xc3\xb1\xc3\xb1\xc3\xb1\xc3\xb1\",\"x\":1},{\"id\":\"0-9\",\"label\":\"Caf\xc3\xa9 "
+         "\xe2\x9c\x93 \xf0\x9f\x9a\x80\"}],\"extra\":true}",
+         2500);
+    TEST_ASSERT_EQUAL(0, H.nout);
+    TEST_ASSERT_EQUAL(2, H.l.nscripts);
+    TEST_ASSERT_EQUAL_STRING("abcdefghijk_", H.l.scripts[0].id);
+}
+
+static void test_scripts_worst_case_line_and_json(void)
+{
+    session_up();
+    char line[600];
+    int o = snprintf(line, sizeof(line), "{\"t\":\"scripts\",\"list\":[");
+    for (int i = 0; i < LINK_MAX_SCRIPTS; i++)
+        o += snprintf(line + o, sizeof(line) - o, "%s{\"id\":\"%012d\",\"label\":\"%024d\"}", i ? "," : "", i, i);
+    o += snprintf(line + o, sizeof(line) - o, "]}");
+    TEST_ASSERT_TRUE(o + 1 <= LINK_MAX_LINE); /* "< 512 bytes" (cdc-v1 §3.1) */
+    h_clear(&H);
+    h_rx(&H, line, 2000);
+    TEST_ASSERT_EQUAL(0, H.nout);
+    TEST_ASSERT_EQUAL(LINK_MAX_SCRIPTS, H.l.nscripts);
+    char b[LINK_SCRIPTS_JSON_MAX + 1];
+    TEST_ASSERT_EQUAL(221, LINK_SCRIPTS_JSON_MAX);
+    TEST_ASSERT_EQUAL(LINK_SCRIPTS_JSON_MAX, link_scripts_json(&H.l, b, sizeof(b)));
+    TEST_ASSERT_EQUAL(-1, link_scripts_json(&H.l, b, sizeof(b) - 1));
+    TEST_ASSERT_EQUAL_STRING("", b);
+    cJSON *j = cJSON_Parse(scripts_json());
+    TEST_ASSERT_EQUAL(LINK_MAX_SCRIPTS, cJSON_GetArraySize(j));
+    cJSON_Delete(j);
+    /* every action fits: script:<12 chars> */
+    TEST_ASSERT_EQUAL_UINT32(1, link_send_cmd(&H.l, "script:000000000004", 2100));
+    cJSON *g = cJSON_Parse(h_last(&H));
+    TEST_ASSERT_EQUAL_STRING("script:000000000004", cJSON_GetObjectItem(g, "action")->valuestring);
+    cJSON_Delete(g);
 }
 
 static void test_mac_parse(void)
@@ -479,5 +648,9 @@ void run_link_tests(void)
     RUN_TEST(test_invalid_vectors);
     RUN_TEST(test_dongle_types_from_agent_rejected);
     RUN_TEST(test_close_session);
+    RUN_TEST(test_scripts_vectors_and_script_cmd_sig);
+    RUN_TEST(test_script_and_power_cmds_independent);
+    RUN_TEST(test_scripts_invalid_keeps_previous_list);
+    RUN_TEST(test_scripts_worst_case_line_and_json);
     RUN_TEST(test_mac_parse);
 }

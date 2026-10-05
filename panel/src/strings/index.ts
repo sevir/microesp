@@ -47,6 +47,12 @@ interface Strings {
   confirmRebootTitle: string;
   confirmText: (kind: 'off' | 'reboot', countdown: number, agentOnline: boolean) => string;
   sendFailed: string;
+  scripts: string;
+  scriptsNote: string;
+  confirmScriptTitle: (label: string, hostname: string) => string;
+  confirmScriptText: string;
+  runScript: string;
+  scriptLaunched: (label: string) => string;
   schedule: string;
   scheduleNote: string;
   scheduleAction: string;
@@ -157,6 +163,13 @@ const es: Strings = {
     'Guarda antes tu trabajo abierto.' +
     (agentOnline ? '' : ' El agente del PC parece desconectado, así que el dongle puede rechazar la orden.'),
   sendFailed: 'No se pudo enviar la orden',
+  scripts: 'Scripts',
+  scriptsNote: 'Definidos en el PC',
+  confirmScriptTitle: (l, h) => `¿Ejecutar «${l}» en ${h || 'el PC'}?`,
+  confirmScriptText:
+    'El agente del PC lo ejecutará de inmediato. El resultado aparecerá en Última orden, en Ajustes.',
+  runScript: 'Ejecutar',
+  scriptLaunched: (l) => `Lanzado: ${l}`,
   schedule: 'Programar',
   scheduleNote: 'Lo ejecuta la nube de Tuya',
   scheduleAction: 'Orden',
@@ -273,6 +286,12 @@ const en: Strings = {
     'Save your open work first.' +
     (agentOnline ? '' : ' The PC agent looks offline, so the dongle may reject the command.'),
   sendFailed: 'Could not send the command',
+  scripts: 'Scripts',
+  scriptsNote: 'Defined on the PC',
+  confirmScriptTitle: (l, h) => `Run “${l}” on ${h || 'the PC'}?`,
+  confirmScriptText: 'The PC agent will run it right away. The result shows up under Last command, in Settings.',
+  runScript: 'Run',
+  scriptLaunched: (l) => `Launched: ${l}`,
   schedule: 'Schedule',
   scheduleNote: 'Run by the Tuya cloud',
   scheduleAction: 'Command',

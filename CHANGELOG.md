@@ -2,6 +2,17 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [SemVer](https://semver.org/). Firmware and agent share the version number (tag `vX.Y.Z`, which must match `CONFIG_PROJECT_VERSION` in `firmware/app_default.config`).
 
+## 0.4.0 - 2026-10-05
+
+### Added
+
+- **User scripts.** Up to 5 scripts defined in `agent.toml` (`[[scripts]]`: `id`, `label`, `command`, optional `timeout`, default 10 min) can be started from the panel. The agent sends only ids and labels to the dongle (new CDC message `scripts`, cdc-v1 §3.1); the command line never leaves the PC. The dongle publishes them in DP 115 `scripts` and runs one when DP 116 `script_run` is set to its id, through a signed `cmd` with action `script:<id>`; the outcome goes to `last_result`. The panel shows one button per script, with confirmation, only while the agent is online and has scripts. Scripts run in the background, one instance per id, killed with their process group on timeout. The agent refuses scripts from a config file writable by group or others.
+- **User scripts runner.** `install.sh --scripts-user NAME` installs `microesp-scripts.socket` and `microesp-scripts.service` (`microesp-agent scripts-runner`, socket-activated on `/run/microesp/scripts.sock`) running as that desktop user without a sandbox, and sets `scripts_socket` in `agent.toml`. The agent service is unchanged (user `microesp`, full sandbox, same polkit rule): it only sends the script id over the socket and acks after the runner answers. The runner takes commands only from the root-owned `agent.toml` and accepts only the `microesp` user or root (`SO_PEERCRED`). Without the runner, scripts run inside the agent as `microesp` in its sandbox (no network, no `/home`). On Windows scripts run in the service as LocalSystem.
+
+### Changed
+
+- **Firmware string DPs.** Strings live in one pool sized per DP (less RAM than before), reports go up to 1920 bytes, and each string DP of a report gets its own snapshot (several string DPs in one report were broken). Power and script commands each keep their own pending ack, so a script never disturbs a shutdown or reboot countdown.
+
 ## 0.3.0 - 2026-10-05
 
 ### Added

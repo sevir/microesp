@@ -1,0 +1,27 @@
+# /etc/systemd/system/microesp-scripts.service
+# MicroESP user scripts runner, started on demand by microesp-scripts.socket.
+# Rendered by install.sh --scripts-user NAME (@SCRIPTS_USER@ is replaced).
+#
+# The agent (microesp-agent.service) stays as user microesp inside its
+# sandbox and only asks this runner to start a script by id. The runner
+# reads the ids and commands from the root-owned agent.toml and runs them
+# as @SCRIPTS_USER@ without a sandbox, so scripts behave as in that user's
+# own shell (home, network, sudo if allowed).
+[Unit]
+Description=MicroESP user scripts runner (as @SCRIPTS_USER@)
+Documentation=https://github.com/microesp/agent
+Requires=microesp-scripts.socket
+After=microesp-scripts.socket
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/microesp-agent scripts-runner --config /etc/microesp/agent.toml
+User=@SCRIPTS_USER@
+# /etc/microesp is root:microesp 0750 and agent.toml root:microesp 0640;
+# the key file (microesp 0600) stays unreadable.
+SupplementaryGroups=microesp
+Restart=on-failure
+RestartSec=3
+
+[Install]
+Also=microesp-scripts.socket

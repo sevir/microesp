@@ -22,6 +22,7 @@ import {
   toggleDay,
   mergeCodes,
   mergeDps,
+  parseScripts,
   pendingCommand,
 } from '../src/device/model.ts';
 
@@ -124,4 +125,44 @@ test('cloud timer helpers', () => {
   assert.equal(timerAction({ power_on: true }), 'power_on');
   assert.equal(timerAction({ 103: false }), null);
   assert.equal(timerAction('nope'), null);
+});
+
+test('scripts DPs merge as strings', () => {
+  const raw = '[["backup","Backup NAS"]]';
+  const s = mergeDps(DEFAULT_STATE, { 115: raw, 116: '' });
+  assert.equal(s.scripts, raw);
+  assert.equal(s.script_run, '');
+  assert.equal(mergeCodes(DEFAULT_STATE, { scripts: { value: raw, time: 1 } }).scripts, raw);
+  assert.equal(mergeCodes(DEFAULT_STATE, { scripts: 3 }), DEFAULT_STATE);
+});
+
+test('parseScripts reads the compact list and drops invalid entries', () => {
+  assert.deepEqual(parseScripts('[["backup","Backup NAS"],["lock-1","Lock"]]'), [
+    { id: 'backup', label: 'Backup NAS' },
+    { id: 'lock-1', label: 'Lock' },
+  ]);
+  assert.deepEqual(parseScripts({ value: '[["a","A"]]', time: 1 }), [{ id: 'a', label: 'A' }]);
+  assert.deepEqual(parseScripts([['a', 'A']]), [{ id: 'a', label: 'A' }]);
+  assert.deepEqual(
+    parseScripts([
+      ['Bad', 'upper case id'],
+      ['toolongid_1234', 'id too long'],
+      ['', 'empty id'],
+      ['ok', ''],
+      ['ok', '   '],
+      ['num', 5],
+      'nope',
+      ['ok', 'Fine'],
+      ['ok', 'Duplicate'],
+    ]),
+    [{ id: 'ok', label: 'Fine' }]
+  );
+  const six = JSON.stringify(['a', 'b', 'c', 'd', 'e', 'f'].map((id) => [id, id.toUpperCase()]));
+  assert.deepEqual(parseScripts(six).map((s) => s.id), ['a', 'b', 'c', 'd', 'e']);
+});
+
+test('parseScripts treats missing, empty or garbage values as no scripts', () => {
+  for (const raw of [undefined, null, '', '   ', '[]', 'garbage', '{"a":1}', '[["a"', 42, {}, true]) {
+    assert.deepEqual(parseScripts(raw), [], String(raw));
+  }
 });

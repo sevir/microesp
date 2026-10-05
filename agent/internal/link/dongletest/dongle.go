@@ -19,6 +19,7 @@ const (
 	BadWelcomeSig      // sign welcome with a wrong key
 	Silent             // never answer hello
 	RejectAuth         // answer auth with err unauth even if valid
+	NoScripts          // old firmware: answer scripts with err bad_msg
 )
 
 // Dongle is the fake device side of a pipe.
@@ -188,6 +189,12 @@ func (d *Dongle) handle(m proto.Message) {
 		d.ready = true
 		d.mu.Unlock()
 		_ = d.Send(&proto.Ready{})
+	case *proto.Scripts:
+		if d.Mode == NoScripts {
+			_ = d.Send(&proto.Err{Code: proto.CodeBadMsg})
+		} else if !d.Ready() {
+			_ = d.Send(&proto.Err{Code: proto.CodeUnauth})
+		}
 	case *proto.Tele, *proto.HB:
 		if !d.Ready() {
 			_ = d.Send(&proto.Err{Code: proto.CodeUnauth})

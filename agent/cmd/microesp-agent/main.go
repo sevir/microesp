@@ -1,5 +1,6 @@
 // Command microesp-agent links this PC with a MicroESP USB dongle:
-// it reports telemetry and executes signed shutdown/reboot commands.
+// it reports telemetry and executes signed shutdown/reboot commands and the
+// user scripts defined in its configuration.
 package main
 
 import (
@@ -20,8 +21,13 @@ import (
 	"github.com/microesp/agent/internal/config"
 	"github.com/microesp/agent/internal/link"
 	"github.com/microesp/agent/internal/power"
+	"github.com/microesp/agent/internal/scripts"
 	"github.com/microesp/agent/internal/telemetry"
 )
+
+// scriptsStopWait bounds the wait for running user scripts at shutdown;
+// they are killed when the run context is cancelled.
+const scriptsStopWait = 10 * time.Second
 
 // version is injected with -ldflags "-X main.version=...".
 var version = "dev"
@@ -63,12 +69,13 @@ func main() {
 	os.Exit(runMain(os.Args[1:], realDeps()))
 }
 
-const usage = `Uso: microesp-agent [run|pair|status|version] [opciones]
+const usage = `Uso: microesp-agent [run|pair|status|scripts-runner|version] [opciones]
 
-  run      (por defecto) mantiene la sesión con el dongle
-  pair     empareja con el dongle (pide el código de 6 dígitos)
-  status   busca el dongle y muestra información
-  version  muestra la versión
+  run             (por defecto) mantiene la sesión con el dongle
+  pair            empareja con el dongle (pide el código de 6 dígitos)
+  status          busca el dongle y muestra información
+  scripts-runner  ejecuta los scripts de usuario pedidos por el agente (socket unix)
+  version         muestra la versión
 
 Opciones comunes:
 `
@@ -158,6 +165,7 @@ func runMain(args []string, d deps) int {
 	var code string
 	var owner string
 	var handshake bool
+	var listen string
 	switch cmd {
 	case "run":
 		c.register(fs)
@@ -168,6 +176,9 @@ func runMain(args []string, d deps) int {
 	case "status":
 		c.register(fs)
 		fs.BoolVar(&handshake, "handshake", false, "abrir el puerto y autenticar la sesión (detén antes el servicio)")
+	case "scripts-runner":
+		c.register(fs)
+		fs.StringVar(&listen, "listen", "", "socket unix en el que escuchar si no hay activación por socket de systemd")
 	case "version", "-v", "--version":
 		fmt.Fprintf(d.stdout, "microesp-agent %s (%s, %s/%s)\n", version, runtime.Version(), runtime.GOOS, runtime.GOARCH)
 		return 0
@@ -196,6 +207,8 @@ func runMain(args []string, d deps) int {
 		return cmdPair(d, cfg, code, owner, log)
 	case "status":
 		return cmdStatus(d, cfg, handshake, log)
+	case "scripts-runner":
+		return cmdScriptsRunner(d, cfg, listen, log)
 	}
 	return cmdRun(d, cfg, log)
 }
@@ -220,6 +233,8 @@ func newAgent(d deps, cfg config.Config, log *slog.Logger) (*link.Agent, error) 
 		HostInfo:          d.hostInfo,
 		Collector:         d.collector(cfg.Disks, log),
 		Executor:          ex,
+		Scripts:           newScripts(cfg, log),
+		ScriptsRemote:     scriptsRemote(cfg),
 		Version:           version,
 		OS:                osName(),
 		TelemetryInterval: cfg.TelemetryInterval.Duration,
@@ -228,16 +243,58 @@ func newAgent(d deps, cfg config.Config, log *slog.Logger) (*link.Agent, error) 
 	}, nil
 }
 
+// newScripts builds the user scripts runner; nil when none are configured.
+func newScripts(cfg config.Config, log *slog.Logger) *scripts.Runner {
+	if len(cfg.Scripts) == 0 {
+		return nil
+	}
+	specs := make([]scripts.Spec, 0, len(cfg.Scripts))
+	for _, s := range cfg.Scripts {
+		specs = append(specs, scripts.Spec{ID: s.ID, Label: s.Label, Command: s.Command, Timeout: s.Timeout.Duration})
+	}
+	return scripts.New(specs, cfg.DryRun, log)
+}
+
+// scriptsRemote returns the client of the scripts runner when
+// scripts_socket is set. In dry-run the agent only logs scripts itself.
+func scriptsRemote(cfg config.Config) link.ScriptStarter {
+	if cfg.ScriptsSocket == "" || cfg.DryRun || len(cfg.Scripts) == 0 {
+		return nil
+	}
+	return &scripts.Client{Path: cfg.ScriptsSocket, Timeout: scripts.IOTimeout}
+}
+
+// scriptsMode tells where scripts run, for status.
+func scriptsMode(cfg config.Config) string {
+	if scriptsRemote(cfg) != nil {
+		return "via runner " + cfg.ScriptsSocket
+	}
+	return "local"
+}
+
+func scriptIDs(cfg config.Config) []string {
+	ids := make([]string, 0, len(cfg.Scripts))
+	for _, s := range cfg.Scripts {
+		ids = append(ids, s.ID)
+	}
+	return ids
+}
+
 func cmdRun(d deps, cfg config.Config, log *slog.Logger) int {
 	a, err := newAgent(d, cfg, log)
 	if err != nil {
 		log.Error("cannot start", "err", err)
 		return 1
 	}
-	log.Info("microesp-agent starting", "version", version, "device", cfg.Device, "backend", a.Executor.Name(), "dry_run", cfg.DryRun)
+	log.Info("microesp-agent starting", "version", version, "device", cfg.Device, "backend", a.Executor.Name(), "dry_run", cfg.DryRun, "scripts", scriptIDs(cfg), "scripts_mode", scriptsMode(cfg))
 	ctx, cancel := d.ctx()
 	defer cancel()
-	if err := runService(ctx, a.Run); err != nil {
+	err = runService(ctx, a.Run)
+	cancel() // kills the user scripts still running
+	if !a.Scripts.Wait(scriptsStopWait) {
+		log.Warn("user scripts still running at exit")
+	}
+	if err != nil {
 		log.Error("agent stopped", "err", err)
 		return 1
 	}
@@ -303,6 +360,7 @@ func cmdStatus(d deps, cfg config.Config, handshake bool, log *slog.Logger) int 
 	fmt.Fprintf(out, "microesp-agent %s\n", version)
 	fmt.Fprintf(out, "dispositivo configurado: %s\n", cfg.Device)
 	fmt.Fprintf(out, "backend de energía:      %s (dry_run=%v)\n", cfg.PowerBackend, cfg.DryRun)
+	fmt.Fprintf(out, "scripts:                 %d %v %s\n", len(cfg.Scripts), scriptIDs(cfg), scriptsMode(cfg))
 	if _, err := config.LoadKey(cfg.KeyFile); err != nil {
 		fmt.Fprintf(out, "clave:                   NO VÁLIDA (%v)\n", err)
 	} else {

@@ -1,6 +1,6 @@
 # MicroESP panel (Ray)
 
-Panel MiniApp for Smart Life built with [Ray](https://developer.tuya.com/en/miniapp/develop/ray/guide/start/quick-start). It replaces the product's standard panel with the "Panel MicroESP" design: PC state, power on, shut down and restart with confirmation and a cancellable countdown, cloud timers, telemetry and settings.
+Panel MiniApp for Smart Life built with [Ray](https://developer.tuya.com/en/miniapp/develop/ray/guide/start/quick-start). It replaces the product's standard panel with the "Panel MicroESP" design: PC state, power on, shut down and restart with confirmation and a cancellable countdown, user scripts, cloud timers, telemetry and settings.
 
 It is the released panel of the MicroESP product. Building it in the Tuya MiniApp IDE (also on Linux, under Wine), previewing it on the phone and publishing new versions: [`docs/panel-publishing.md`](../docs/panel-publishing.md).
 
@@ -10,7 +10,7 @@ The product is **TuyaLink**, so the panel uses the thing model rather than class
 
 | What | Ray API | Detail |
 |---|---|---|
-| Initial values | `getDeviceInfo` | `dpCodes` (by code) and `dps` (by abilityId 101–114) |
+| Initial values | `getDeviceInfo` | `dpCodes` (by code) and `dps` (by abilityId 101–116) |
 | Changes | `subscribeReceivedThingModelMessage` + `onReceivedThingModelMessage` | Property messages (`type: 0`), plain values or `{value, time}` |
 | Changes (fallback) | `onDpDataChange` | In case the app also delivers them as DPs |
 | Writes | `publishThingModelMessage` | `type: 0`, `payload: {<code>: value}` = `thing/property/set` |
@@ -25,6 +25,8 @@ Semantics the panel follows (see `dp.json`):
 - `power_off` / `reboot` set to `true` start the `cmd_countdown` countdown. Sending `false` while it counts cancels it. The dongle does not report the time left, so the panel estimates it locally from when it sees the `true`.
 - Power on, shut down and restart are always enabled, whatever `pc_state` says: the BIOS enumerates the dongle even with the PC off, so the detected state is only a hint. Shut down and restart always ask for confirmation first. They are run by the PC agent, so with `agent_online = false` the dongle answers `agent_offline`; the panel warns about it but still sends them.
 - Telemetry arrives in tenths of a percent (`184` → 18.4 %).
+- `scripts` (115) is the list of user scripts the PC agent reports, as compact JSON `[["<id>","<label>"],...]` (0..5 items, see [`docs/protocol/cdc-v1.md`](../docs/protocol/cdc-v1.md) §3.1). `parseScripts` keeps only entries with an id matching `^[a-z0-9_-]{1,12}$` and a non-empty label, drops repeated ids and keeps at most 5; a missing, empty or malformed value means no scripts. The home page shows a Scripts section with one button per script only when the dongle is online, `agent_online` is `true` and the list is not empty; otherwise nothing is shown.
+- `script_run` (116) is a push button: after a confirmation (no countdown), the panel writes the script id and shows a "launched" toast; the dongle runs it through the agent and sets the property back to `""`. The outcome lands in `last_result` (`ok`, `cmd_rejected`, `agent_offline`), shown under *Last command* in Settings.
 - `fault` is a bit mask. Each active bit shows a warning, except `hid_not_armed`, which is informational (a failed wake shows up as `wake_failed`).
 
 ## Cloud timers
@@ -46,12 +48,12 @@ panel/
 │   ├── app.tsx
 │   ├── routes.config.ts     # A single page: pages/home
 │   ├── device/
-│   │   ├── model.ts         # Thing model: types, normalization, rules (no dependencies)
+│   │   ├── model.ts         # Thing model: types, normalization, scripts parsing, rules (no dependencies)
 │   │   ├── useMicroEsp.ts   # Hook: live state and writes over TuyaLink
 │   │   └── useTimers.ts     # Hook: cloud timers of the three commands
 │   ├── strings/index.ts     # es/en texts, chosen by the app language
-│   ├── components/          # Icon (SVG as data URI), ConfirmSheet
-│   ├── pages/home/          # The panel and its Schedule section
+│   ├── components/          # Icon (SVG as data URI), ConfirmSheet (power commands and scripts)
+│   ├── pages/home/          # The panel (with its Scripts section) and its Schedule section
 │   └── variables.less       # Palette
 ├── scripts/
 │   ├── add-win-natives.sh   # npm run ide:win-natives
@@ -82,4 +84,5 @@ Still to check:
 
 - whether `getDeviceInfo` also fills `dpCodes` for TuyaLink products;
 - the exact `payload` shape of `onReceivedThingModelMessage`. The model accepts plain values and `{value, time}`;
+- the user scripts on the real device: DP 115 delivered as a string in `dps`, and the write of `script_run`;
 - the cloud timers on the real device: that `addTimer` with a single DP value per category runs, once and repeating.

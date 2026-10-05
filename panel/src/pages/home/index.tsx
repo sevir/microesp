@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Button, Text, View, openDeviceDetailPage, showToast, vibrateShort } from '@ray-js/ray';
 import ConfirmSheet from '@/components/ConfirmSheet';
 import Icon from '@/components/Icon';
@@ -7,12 +7,14 @@ import { useMicroEsp } from '@/device/useMicroEsp';
 import {
   PendingCommand,
   WAKE_METHODS,
+  Script,
   WritableCode,
   MicroEspState,
   canWake,
   clampCountdown,
   errorFaults,
   formatTenths,
+  parseScripts,
   telemetryLive,
 } from '@/device/model';
 import Schedule from './Schedule';
@@ -34,6 +36,10 @@ export default function Home() {
   const dev = useMicroEsp();
   const { state, pending, online } = dev;
   const [ask, setAsk] = useState<PendingCommand | null>(null);
+  const [askScript, setAskScript] = useState<Script | null>(null);
+  const scripts = useMemo(() => parseScripts(state.scripts), [state.scripts]);
+  // Scripts run on the PC agent: hide the whole section unless it can take them.
+  const showScripts = online && state.agent_online && scripts.length > 0;
 
   const send = <K extends WritableCode>(code: K, value: MicroEspState[K]) => {
     vibrateShort({ type: 'light' });
@@ -44,6 +50,17 @@ export default function Home() {
     if (!ask) return;
     send(ask === 'off' ? 'power_off' : 'reboot', true);
     setAsk(null);
+  };
+
+  const runScript = () => {
+    if (!askScript) return;
+    const { id, label } = askScript;
+    setAskScript(null);
+    vibrateShort({ type: 'light' });
+    dev
+      .set('script_run', id)
+      .then(() => showToast({ title: Strings.scriptLaunched(label), icon: 'success' }))
+      .catch(() => showToast({ title: Strings.sendFailed, icon: 'error' }));
   };
 
   const live = telemetryLive(state);
@@ -151,6 +168,27 @@ export default function Home() {
         </View>
       ))}
 
+      {showScripts ? (
+        <View className={styles.section}>
+          <View className={styles.sectionHead}>
+            <Text className={styles.h2}>{Strings.scripts}</Text>
+            <Text className={styles.note}>{Strings.scriptsNote}</Text>
+          </View>
+          <View className={styles.scriptList}>
+            {scripts.map((sc) => (
+              <Button key={sc.id} className={styles.scriptBtn} onClick={() => setAskScript(sc)}>
+                <View className={styles.scriptInner}>
+                  <View className={styles.scriptIcon}>
+                    <Icon name="play" color="#FFFFFF" size={14} strokeWidth={2.4} />
+                  </View>
+                  <Text className={styles.scriptLabel}>{sc.label}</Text>
+                </View>
+              </Button>
+            ))}
+          </View>
+        </View>
+      ) : null}
+
       <View className={styles.section}>
         <View className={styles.sectionHead}>
           <Text className={styles.h2}>{Strings.performance}</Text>
@@ -242,6 +280,16 @@ export default function Home() {
           agentOnline={state.agent_online}
           onConfirm={confirm}
           onClose={() => setAsk(null)}
+        />
+      ) : null}
+
+      {askScript ? (
+        <ConfirmSheet
+          kind="script"
+          label={askScript.label}
+          hostname={state.pc_hostname}
+          onConfirm={runScript}
+          onClose={() => setAskScript(null)}
         />
       ) : null}
     </View>

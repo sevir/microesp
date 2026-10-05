@@ -29,3 +29,39 @@ power_backend = "systemd"
 
 # debug | info | warn | error
 log_level = "info"
+
+# --- User scripts ------------------------------------------------------
+# Up to 5 commands that can be started from the Tuya app / dongle. Only `id`
+# and `label` are sent to the dongle; the command line never leaves this PC.
+#   id       ^[a-z0-9_-]{1,12}$, unique
+#   label    shown in the app: 1..24 bytes of UTF-8, no control characters,
+#            no " and no \
+#   command  run with `sh -c` (Linux) or `cmd /C` (Windows); see
+#            scripts_socket for the user it runs as (use sudo inside the
+#            script if it needs another user)
+#   timeout  optional, default "10m"; on timeout the whole process tree is
+#            killed
+# A script runs in the background, one instance per id. Its exit code,
+# duration and the last 2 KB of output are logged (agent or runner). With
+# dry_run = true scripts are only logged.
+# For safety the agent refuses to start if this file defines scripts and is
+# writable by group or others (chmod go-w /etc/microesp/agent.toml).
+#
+# scripts_socket: empty (default) = the agent runs the scripts itself, as
+# user microesp inside its systemd sandbox (no network, read-only
+# filesystem, no /home). Set by `install.sh --scripts-user NAME` to
+# "/run/microesp/scripts.sock": scripts then run in microesp-scripts.service
+# as NAME, outside the sandbox. Linux only. It must stay above the
+# [[scripts]] tables.
+# scripts_socket = ""
+#
+# [[scripts]]
+# id = "backup"
+# label = "Backup NAS"
+# command = "/usr/local/bin/backup.sh --full"
+# timeout = "30m"
+#
+# [[scripts]]
+# id = "docker-up"
+# label = "Docker up"
+# command = "docker compose -f /srv/app/compose.yaml up -d"

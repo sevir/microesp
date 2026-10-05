@@ -26,6 +26,14 @@ extern "C" {
 #define LINK_ACK_TIMEOUT     10000 /* ms without ack -> cmd_rejected */
 #define LINK_PAIR_WINDOW     120000
 #define LINK_PAIR_MAX_FAILS  3
+/* User scripts (cdc-v1 §3.1) */
+#define LINK_MAX_SCRIPTS       5
+#define LINK_SCRIPT_ID_MAX     12 /* ^[a-z0-9_-]{1,12}$ */
+#define LINK_SCRIPT_LABEL_MAX  24 /* bytes of UTF-8 */
+#define LINK_SCRIPT_PREFIX     "script:"
+#define LINK_ACTION_MAX        (7 + LINK_SCRIPT_ID_MAX) /* "script:<id>" */
+/* [["<id>","<label>"],...] for 5 items at their maximum lengths */
+#define LINK_SCRIPTS_JSON_MAX  (2 + LINK_MAX_SCRIPTS * (7 + LINK_SCRIPT_ID_MAX + LINK_SCRIPT_LABEL_MAX) + LINK_MAX_SCRIPTS - 1)
 
 typedef enum {
     LINK_EV_HELLO,       /* authenticated hello data (emitted on ready): host, macs */
@@ -39,6 +47,7 @@ typedef enum {
     LINK_EV_PAIR_FAIL,   /* wrong code: .pair_fails */
     LINK_EV_PAIR_END,    /* pairing mode left (timeout / too many failures / paired) */
     LINK_EV_PROTO_ERR,   /* an err{code} was sent to the agent: .err_code */
+    LINK_EV_SCRIPTS,     /* a valid scripts{list} replaced link_t.scripts (see link_scripts_json) */
 } link_ev_type_t;
 
 typedef struct {
@@ -74,6 +83,21 @@ typedef struct {
 
 typedef enum { LINK_IDLE, LINK_WAIT_AUTH, LINK_READY } link_state_t;
 
+/* Commands awaiting an ack: at most one per class, so a script run never blocks (nor is
+ * blocked by) a shutdown/reboot. Ids are shared (one increasing counter per session). */
+typedef enum { LINK_CMD_POWER = 0, LINK_CMD_SCRIPT, LINK_CMD__CLASSES } link_cmd_class_t;
+
+typedef struct {
+    bool pending;
+    uint32_t id;
+    uint32_t sent_ms;
+} link_pend_t;
+
+typedef struct {
+    char id[LINK_SCRIPT_ID_MAX + 1];
+    char label[LINK_SCRIPT_LABEL_MAX + 1];
+} link_script_t;
+
 typedef struct {
     link_cbs_t cb;
     char fw[24];
@@ -90,9 +114,11 @@ typedef struct {
     uint32_t last_rx_ms;
     bool online;
     uint32_t cmd_id;    /* last id sent in this session */
-    bool cmd_pending;
-    uint32_t cmd_pending_id;
-    uint32_t cmd_sent_ms;
+    link_pend_t pend[LINK_CMD__CLASSES];
+    /* user scripts of the agent (RAM only; kept when the session drops) */
+    bool scripts_known; /* a valid list was received at least once */
+    int nscripts;
+    link_script_t scripts[LINK_MAX_SCRIPTS];
     /* pairing */
     bool pair_mode;
     char pair_code[7];
@@ -125,8 +151,24 @@ bool link_online(const link_t *l);
 
 /* Send a countdown notice (action: shutdown/reboot/cancel). Returns false if no session. */
 bool link_send_notice(link_t *l, const char *action, int in_s);
-/* Send a signed cmd. Returns the id (>0) or 0 if no ready session / one is pending. */
+/* Send a signed cmd: "shutdown", "reboot" or "script:<id>" (id of the current list).
+ * Returns the id (>0) or 0 if no ready session, unknown action, or a cmd of the same
+ * class (power / script) is still awaiting its ack. */
 uint32_t link_send_cmd(link_t *l, const char *action, uint32_t now_ms);
+/* A cmd of that class is awaiting its ack. */
+bool link_cmd_pending(const link_t *l, link_cmd_class_t c);
+
+/* ^[a-z0-9_-]{1,12}$ */
+bool link_valid_script_id(const char *id);
+/* cdc-v1 §3.1 label: 1..24 bytes of valid UTF-8, no control characters (C0, DEL, C1),
+ * no '"' and no '\'. */
+bool link_valid_script_label(const char *label);
+/* Script of the current list, NULL if unknown. */
+const link_script_t *link_script_find(const link_t *l, const char *id);
+/* Current list as compact JSON [["<id>","<label>"],...] (DP 115). Ids and labels are
+ * validated on receipt and need no escaping. Returns the length, -1 if it does not fit
+ * (cap >= LINK_SCRIPTS_JSON_MAX + 1 always fits). */
+int link_scripts_json(const link_t *l, char *out, size_t cap);
 
 /* Pairing mode with the given 6-digit code for LINK_PAIR_WINDOW ms. */
 void link_pair_start(link_t *l, const char *code, uint32_t now_ms);

@@ -4,7 +4,8 @@ Resident agent on the PC for the **MicroESP** USB dongle. It talks to the dongle
 
 - sends the PC **telemetry**: CPU %, used memory %, lowest free % of the configured disks, uptime, hostname and MACs of the physical NICs (for Wake-on-LAN);
 - keeps a **heartbeat** so the dongle knows the agent is alive;
-- runs the **signed** shutdown and reboot commands that arrive from the Tuya app through the dongle.
+- runs the **signed** shutdown and reboot commands that arrive from the Tuya app through the dongle;
+- runs up to 5 **user scripts** defined in its configuration, also on a signed command from the app ([User scripts](#user-scripts)).
 
 Every command is verified (HMAC-SHA256 with the pairing key and the session nonces, increasing id against replays, known action). The agent answers with `ack` **before** running it.
 
@@ -30,6 +31,7 @@ Releases are generated with `goreleaser release` (`.goreleaser.yaml`). Each arch
 ```sh
 sudo ./deploy/install.sh                  # builds (or uses ../microesp-agent) and installs
 sudo ./deploy/install.sh --binary ./microesp-agent
+sudo ./deploy/install.sh --scripts-user "$USER"   # also run user scripts as you (see User scripts)
 ./deploy/install.sh --dry-run             # only shows what it would do (does not require root)
 ```
 
@@ -43,6 +45,7 @@ The installer is idempotent; you can run it again to update. It does the followi
 | udev | `/etc/udev/rules.d/99-microesp.rules`: group `dialout`, symlink `/dev/microesp`, ModemManager ignores the port, `power/wakeup=enabled` so the dongle's HID keyboard can wake the PC |
 | polkit | `/etc/polkit-1/rules.d/50-microesp.rules`: the `microesp` user can only shut down or reboot (`org.freedesktop.login1.power-off`, `power-off-multiple-sessions`, `reboot`, `reboot-multiple-sessions`) |
 | systemd | `/etc/systemd/system/microesp-agent.service` enabled and started |
+| scripts runner (only with `--scripts-user NAME`) | `microesp-scripts.socket` + `microesp-scripts.service` for user `NAME`, socket enabled, and `scripts_socket = "/run/microesp/scripts.sock"` set in `agent.toml` ([User scripts](#user-scripts)) |
 
 The unit runs without privileges and with a strict sandbox (`ProtectSystem=strict`, `DevicePolicy=closed` + `DeviceAllow=char-ttyACM rw`, no IP network, `NoNewPrivileges`). `systemd-analyze security microesp-agent` gives an exposure of **1.2**.
 
@@ -79,6 +82,8 @@ TOML file (by default `/etc/microesp/agent.toml`; on Windows `C:\ProgramData\Mic
 | `dry_run` | `false` | `MICROESP_DRY_RUN` | `--dry-run` |
 | `power_backend` | `"systemd"` (`"windows"` on Windows) | `MICROESP_POWER_BACKEND` | `--power-backend` |
 | `log_level` | `"info"` | `MICROESP_LOG_LEVEL` | `--log-level` |
+| `scripts_socket` | `""` (scripts run in the agent) | — | — |
+| `[[scripts]]` | none | — | — |
 
 Precedence: defaults < file < environment < flags. If you do not pass `--config` and the default file does not exist, the defaults are used. An unknown key is an error.
 
@@ -88,7 +93,65 @@ Precedence: defaults < file < environment < flags. If you do not pass `--config`
   - `systemd` runs `systemctl poweroff|reboot`, which requests the action from logind over D-Bus and is authorized by the polkit rule.
   - `logind-dbus` calls `org.freedesktop.login1.Manager.PowerOff/Reboot` directly through `busctl`.
   - `windows` runs `shutdown /s|/r /t 0`.
-- **dry_run**: logs the commands instead of running them. Use it for testing.
+- **dry_run**: logs the commands (power actions and user scripts) instead of running them. Use it for testing.
+
+## User scripts
+
+Up to 5 commands that the owner of the PC allows to be started from the Tuya app. Each one is a `[[scripts]]` table in `agent.toml`:
+
+```toml
+[[scripts]]
+id = "backup"            # ^[a-z0-9_-]{1,12}$, unique
+label = "Backup NAS"     # shown in the app: 1..24 bytes UTF-8, no control chars, no " or \
+command = "/usr/local/bin/backup.sh --full"
+timeout = "30m"          # optional, default "10m"
+```
+
+- After every session `ready` the agent sends the list of `id` + `label` to the dongle (`scripts` message, [cdc-v1 §3.1](../docs/protocol/cdc-v1.md)). **The command line never leaves the PC**: the cloud can only start scripts defined here. A dongle firmware without scripts support answers `err{bad_msg}`; the agent logs it and carries on.
+- `cmd{action:"script:<id>"}` goes through the same checks as shutdown/reboot (signature, increasing id). Unknown id → `ack unknown_action`; the same script still running → `ack exec_failed`; otherwise `ack ok` and the script runs **in the background** (telemetry, heartbeats and other commands keep going). Different scripts may run at the same time.
+- The command runs with `sh -c` on Linux and `cmd /C` on Windows, with the environment of the process that runs it plus `MICROESP_SCRIPT_ID`, stdin closed and working directory `/`. There is no per-script user: if a script needs another user, use `sudo` inside it.
+- On timeout the **whole process tree** is killed: on Linux the script runs in its own process group and the group gets `SIGKILL`; on Windows `taskkill /T /F`.
+- The log gets the start (pid), exit code, duration and the last 2 KB of the combined stdout/stderr.
+- With `dry_run = true` (or `--dry-run`) scripts are only logged. `microesp-agent status` shows the configured ids and where they run (`local` or `via runner <socket>`).
+
+### Where scripts run (Linux)
+
+**Local (default, `scripts_socket` empty).** The agent runs the scripts itself, as `microesp` inside the service sandbox. This is very limited: no network, a read-only filesystem except a private `/tmp`, no `/home`, no `sudo`. It is enough for a script that only reads local state.
+
+**Scripts runner (`install.sh --scripts-user NAME`).** The agent service is unchanged (user `microesp`, full sandbox, same polkit rule). A small separate service runs the scripts as your desktop user, with no sandbox:
+
+```
+ Tuya app ─► dongle ─► cmd script:backup (signed) ─► microesp-agent.service
+                                                     user microesp, sandboxed
+                                                         │ {"id":"backup"}
+                                                         ▼
+                                    /run/microesp/scripts.sock (NAME:microesp 0660)
+                                                         │ SO_PEERCRED: microesp or root only
+                                                         ▼
+                                    microesp-scripts.service (socket-activated)
+                                    user NAME, no sandbox ─► sh -c "<command from agent.toml>"
+```
+
+```sh
+sudo ./deploy/install.sh --scripts-user alice     # or: sudo MICROESP_SCRIPTS_USER=alice ./deploy/install.sh
+```
+
+The installer checks that `alice` exists and is not `root` or `microesp`. It installs `microesp-scripts.socket` and `microesp-scripts.service` for her, enables the socket, and sets `scripts_socket = "/run/microesp/scripts.sock"` in `agent.toml` (it updates the key if present and keeps the rest of the file). A reinstall without the flag keeps an installed runner and its user. `--uninstall` also removes the runner units.
+
+- On `cmd script:<id>` the agent checks the id against its own list, then asks the runner **before** acking: started → `ack ok`; unknown id → `unknown_action`; already running → `exec_failed`; runner unreachable or no answer within 2 s → `exec_failed`, with an error in the agent log.
+- The wire protocol is one JSON line each way per connection: `{"id":"backup"}` → `{"ok":true}` or `{"ok":false,"err":"unknown"|"busy"|"bad_request"}` (lines up to 256 bytes, 2 s read/write timeouts).
+- The runner (`microesp-agent scripts-runner --config /etc/microesp/agent.toml`) loads the same config with the same validation. It belongs to the `microesp` group to read `agent.toml` (`root:microesp 0640`); the key file (`microesp 0600`) stays unreadable to it. It takes the socket from systemd (`LISTEN_FDS`), or from `--listen PATH` for manual runs.
+- The agent's sandbox needs no change: `connect()` to a unix socket is allowed on a read-only mount (`ProtectSystem=strict`, `ReadOnlyPaths=/`), and `RestrictAddressFamilies` already includes `AF_UNIX`.
+- The runner's output and script results are in `journalctl -u microesp-scripts`. Restart the runner after editing `[[scripts]]` (`sudo systemctl restart microesp-scripts.service`), and the agent too, so both use the same list.
+- Scripts are not part of the desktop session: they get `HOME`, `USER` and `PATH` from systemd but no `DISPLAY`/`WAYLAND_DISPLAY` or session D-Bus, so GUI programs will not show up.
+- A script keeps running if the agent loses the dongle, or if the agent itself restarts while the runner is in use. Stopping the process that runs it (the agent in local mode, the runner otherwise) or shutting down kills the scripts still running; it waits up to 10 s for them.
+
+### Security
+
+- **Only the ids in the root-owned `agent.toml` can run.** The dongle and the agent only send an id; the runner looks up the command in its own copy of the config. Neither the cloud nor the agent can send a command line.
+- Whoever can edit `agent.toml` can run commands as the scripts user. So the agent and the runner refuse to start when the file defines scripts and is writable by group or others (Linux; fix with `chmod go-w`). Keep the scripts themselves writable only by their owner too.
+- Only the agent's user (`microesp`) or root can talk to the runner: the socket is `NAME:microesp 0660` and the runner checks the peer uid with `SO_PEERCRED`.
+- The polkit rule is unchanged: only `microesp` may shut down or reboot without a password.
 
 ## Usage
 
@@ -112,6 +175,8 @@ Stop-Service MicroESPAgent; & "$env:ProgramFiles\MicroESP\microesp-agent.exe" pa
 
 The `MicroESPAgent` service runs as LocalSystem and is integrated with the SCM through `kardianos/service`. The configuration and key are stored in `C:\ProgramData\MicroESP`, with permissions restricted to SYSTEM and Administrators.
 
+On Windows there is no scripts runner (`scripts-runner` is Linux only; leave `scripts_socket` empty): user scripts run in the service, as **LocalSystem in session 0**: they have full rights on the machine but no access to the logged-in user's desktop (a GUI program will not be visible) nor to their mapped drives or credentials. The config file permission check is skipped on Windows; the installer's ACL on `C:\ProgramData\MicroESP` is what protects it.
+
 ## Troubleshooting
 
 | Symptom | Probable cause / solution |
@@ -124,6 +189,11 @@ The `MicroESPAgent` service runs as LocalSystem and is integrated with the SCM t
 | `load key ... permissions too open` | Run `sudo chmod 600 /etc/microesp/agent.key && sudo chown microesp /etc/microesp/agent.key`. |
 | `power action failed ... Access denied` / `interactive authentication required` | The polkit rule is missing or an **inhibitor** is active (for example, an update in progress; see it with `systemd-inhibit --list`). By design, the agent cannot bypass inhibitors. |
 | Ack `exec_failed` in the app | The backend binary (`systemctl`, `busctl` or `shutdown`) was not found. |
+| `config file is writable by group or others; refusing to load [[scripts]]` | `sudo chmod go-w /etc/microesp/agent.toml`. |
+| Log `dongle rejected the scripts list` | The dongle firmware predates user scripts. Update the firmware; everything else keeps working. |
+| A script works in a terminal but not from the app | By default it runs as `microesp` inside the agent's sandbox (no network, read-only filesystem). Install the runner with `--scripts-user` and check the output tail in `journalctl -u microesp-scripts`. |
+| Ack `exec_failed` and `scripts runner failed` in the agent log | The runner socket is not up: `systemctl status microesp-scripts.socket`. |
+| Log `scripts runner does not know the script` | `agent.toml` changed after the runner started: `sudo systemctl restart microesp-scripts.service`. |
 | ModemManager sends `AT` commands to the dongle | The udev rule (`ID_MM_DEVICE_IGNORE`) is missing. |
 | Risk-free testing | Start with `microesp-agent run --dry-run --log-level debug`. |
 
@@ -135,4 +205,5 @@ Countdown notices (`notice`) are attempted to be broadcast with `wall`, but the 
 - `internal/link`: discovery, session, heartbeat, reconnection and command rules. The tests use `net.Pipe` and a simulated dongle (`internal/link/dongletest`).
 - `internal/telemetry`: sampling with gopsutil and the `Collector` interface (includes a fake implementation).
 - `internal/power`: `Executor` interface, with systemd, logind-dbus, Windows and DryRun backends. The tests never run a real action.
+- `internal/scripts`: user script runner (one instance per id, timeout, process-group kill, output tail), the runner socket server (Linux, `SO_PEERCRED`, socket activation) and its client. The tests run harmless shell commands.
 - `internal/config`: TOML, environment and key file.

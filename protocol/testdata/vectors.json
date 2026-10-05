@@ -23,6 +23,11 @@
         "id": 2,
         "action": "reboot",
         "sig": "675fd8ff4cee7d6523630fa7d6d75bb330402ab620d8cd720e1f87e5a493ccf4"
+      },
+      {
+        "id": 3,
+        "action": "script:backup",
+        "sig": "89c14738c21dcbb8b00ba5f0326f65f4c0e046c222044dd5710c8d39cb0c1be8"
       }
     ]
   },
@@ -107,6 +112,29 @@
       {
         "t": "pair_ok",
         "sig": "3a529a79978e442848eb6f3ee60dab31b51f246aa9aac1a791fd95635fff4573"
+      },
+      {
+        "t": "scripts",
+        "list": [
+          {
+            "id": "backup",
+            "label": "Backup NAS"
+          },
+          {
+            "id": "docker-up",
+            "label": "Docker up"
+          }
+        ]
+      },
+      {
+        "t": "scripts",
+        "list": []
+      },
+      {
+        "t": "cmd",
+        "id": 3,
+        "action": "script:backup",
+        "sig": "89c14738c21dcbb8b00ba5f0326f65f4c0e046c222044dd5710c8d39cb0c1be8"
       }
     ],
     "invalid": [
@@ -137,6 +165,38 @@
       {
         "line": "[1,2,3]",
         "why": "not an object"
+      },
+      {
+        "line": "{\"t\":\"scripts\"}",
+        "why": "scripts without list"
+      },
+      {
+        "line": "{\"t\":\"scripts\",\"list\":[{\"id\":\"s0\",\"label\":\"S0\"},{\"id\":\"s1\",\"label\":\"S1\"},{\"id\":\"s2\",\"label\":\"S2\"},{\"id\":\"s3\",\"label\":\"S3\"},{\"id\":\"s4\",\"label\":\"S4\"},{\"id\":\"s5\",\"label\":\"S5\"}]}",
+        "why": "more than 5 scripts"
+      },
+      {
+        "line": "{\"t\":\"scripts\",\"list\":[{\"id\":\"Backup\",\"label\":\"x\"}]}",
+        "why": "id not [a-z0-9_-]"
+      },
+      {
+        "line": "{\"t\":\"scripts\",\"list\":[{\"id\":\"abcdefghijklm\",\"label\":\"x\"}]}",
+        "why": "id longer than 12"
+      },
+      {
+        "line": "{\"t\":\"scripts\",\"list\":[{\"id\":\"a\",\"label\":\"\"}]}",
+        "why": "empty label"
+      },
+      {
+        "line": "{\"t\":\"scripts\",\"list\":[{\"id\":\"a\",\"label\":\"xxxxxxxxxxxxxxxxxxxxxxxxx\"}]}",
+        "why": "label longer than 24 bytes"
+      },
+      {
+        "line": "{\"t\":\"scripts\",\"list\":[{\"id\":\"a\",\"label\":\"say \\\"hi\\\"\"}]}",
+        "why": "label with a double quote"
+      },
+      {
+        "line": "{\"t\":\"scripts\",\"list\":[{\"id\":\"a\",\"label\":\"x\"},{\"id\":\"a\",\"label\":\"y\"}]}",
+        "why": "duplicate id"
       }
     ]
   },

@@ -7,10 +7,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"io"
+	"io/fs"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -168,7 +171,12 @@ func TestPairThenRun(t *testing.T) {
 
 	// run (dry-run) until a command is executed, then stop.
 	done := make(chan int, 1)
-	go func() { done <- runMain([]string{"--dry-run"}, withConfigEnv(e)) }()
+	args := []string{"--dry-run"}
+	if _, err := os.Stat(config.DefaultPath); !errors.Is(err, fs.ErrNotExist) {
+		// The agent is installed on this host: do not read its config.
+		args = append(args, "--config", e.cfg)
+	}
+	go func() { done <- runMain(args, withConfigEnv(e)) }()
 	waitFor(t, "ready", func() bool {
 		e.mu.Lock()
 		n := len(e.dongles)
@@ -293,5 +301,78 @@ func TestSystemdUnitGroupsAndDBus(t *testing.T) {
 	}
 	if !hasUnix || !hasDialout {
 		t.Errorf("AF_UNIX=%v dialout=%v", hasUnix, hasDialout)
+	}
+}
+
+func TestRunWithScripts(t *testing.T) {
+	e := newEnv(t)
+	e.key = bytes.Repeat([]byte{7}, 32)
+	if err := config.SaveKey(e.keyFile, e.key, ""); err != nil {
+		t.Fatal(err)
+	}
+	body, _ := os.ReadFile(e.cfg)
+	body = append(body, "\n[[scripts]]\nid = \"backup\"\nlabel = \"Backup NAS\"\ncommand = \"exit 0\"\n"...)
+	if err := os.WriteFile(e.cfg, body, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	e.out.Reset()
+	if rc := runMain([]string{"status", "--config", e.cfg}, e.deps()); rc != 0 || !strings.Contains(e.out.String(), "scripts:                 1 [backup]") {
+		t.Fatalf("status rc=%d %s", rc, e.out.String())
+	}
+
+	done := make(chan int, 1)
+	go func() { done <- runMain([]string{"run", "--config", e.cfg}, e.deps()) }()
+	waitFor(t, "ready", func() bool { d := e.last(); return d != nil && d.Ready() })
+	d := e.last()
+	waitFor(t, "scripts list", func() bool {
+		for _, m := range d.Received() {
+			if s, ok := m.(*proto.Scripts); ok && len(s.List) == 1 && s.List[0].ID == "backup" && s.List[0].Label == "Backup NAS" {
+				return true
+			}
+		}
+		return false
+	})
+	if err := d.Send(d.SignedCmd(1, proto.ScriptAction("backup"))); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "ack", func() bool { a, ok := d.Ack(1); return ok && a.OK })
+	e.cancel()
+	if rc := <-done; rc != 0 {
+		t.Fatalf("run rc=%d %s", rc, e.errb.String())
+	}
+
+	// A config with scripts that others can modify is refused.
+	if runtime.GOOS != "windows" {
+		if err := os.Chmod(e.cfg, 0o666); err != nil {
+			t.Fatal(err)
+		}
+		e.errb.Reset()
+		if rc := runMain([]string{"run", "--config", e.cfg}, e.deps()); rc != 2 || !strings.Contains(e.errb.String(), "writable by group or others") {
+			t.Fatalf("insecure config rc=%d %s", rc, e.errb.String())
+		}
+	}
+}
+
+// The runner units are templates rendered by install.sh --scripts-user and
+// must keep the access model of the README (socket NAME:microesp 0660,
+// runner in the microesp group to read agent.toml).
+func TestScriptsRunnerUnits(t *testing.T) {
+	read := func(name string) string {
+		b, err := os.ReadFile(filepath.Join("..", "..", "deploy", "systemd", name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	sock, svc := read("microesp-scripts.socket"), read("microesp-scripts.service")
+	for _, want := range []string{"ListenStream=/run/microesp/scripts.sock", "SocketUser=@SCRIPTS_USER@", "SocketGroup=microesp", "SocketMode=0660", "RemoveOnStop=yes"} {
+		if !strings.Contains(sock, "\n"+want+"\n") {
+			t.Errorf("socket unit lacks %q", want)
+		}
+	}
+	for _, want := range []string{"User=@SCRIPTS_USER@", "SupplementaryGroups=microesp", "Restart=on-failure", "ExecStart=/usr/local/bin/microesp-agent scripts-runner --config /etc/microesp/agent.toml"} {
+		if !strings.Contains(svc, "\n"+want+"\n") {
+			t.Errorf("service unit lacks %q", want)
+		}
 	}
 }

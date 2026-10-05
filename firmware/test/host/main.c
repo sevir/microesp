@@ -13,6 +13,7 @@ void run_button_tests(void);
 void run_dp_model_tests(void);
 void run_security_tests(void);
 void run_tylink_tests(void);
+void run_scripts_tests(void);
 
 int main(void)
 {
@@ -27,5 +28,6 @@ int main(void)
     run_dp_model_tests();
     run_security_tests();
     run_tylink_tests();
+    run_scripts_tests();
     return UNITY_END();
 }

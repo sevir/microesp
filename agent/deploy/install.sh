@@ -1,9 +1,14 @@
 #!/usr/bin/env bash
 # Idempotent installer for microesp-agent (Linux + systemd).
 #
-#   sudo ./install.sh [--binary PATH] [--no-start]
+#   sudo ./install.sh [--binary PATH] [--no-start] [--scripts-user NAME]
 #   sudo ./install.sh --uninstall [--purge]
 #   ./install.sh --dry-run [...]        # shows the actions, does not require root
+#
+# --scripts-user NAME (or MICROESP_SCRIPTS_USER=NAME) also installs the user
+# scripts runner (microesp-scripts.socket/.service) running as that existing
+# user, and points scripts_socket in agent.toml at it. The agent service is
+# unchanged. A reinstall keeps an installed runner and its user.
 #
 # Looks for the binary in: --binary, ../microesp-agent (release tarball) or
 # builds it with Go when run from the source tree.
@@ -19,6 +24,12 @@ KEY_FILE=$CONF_DIR/agent.key
 UNIT_FILE=/etc/systemd/system/microesp-agent.service
 POLKIT_FILE=/etc/polkit-1/rules.d/50-microesp.rules
 UDEV_FILE=/etc/udev/rules.d/99-microesp.rules
+RUNNER_SOCKET_FILE=/etc/systemd/system/microesp-scripts.socket
+RUNNER_SERVICE_FILE=/etc/systemd/system/microesp-scripts.service
+RUNNER_SOCKET=microesp-scripts.socket
+RUNNER_SERVICE=microesp-scripts.service
+SCRIPTS_SOCK=/run/microesp/scripts.sock
+SCRIPTS_USER="${MICROESP_SCRIPTS_USER:-}"
 SVC_USER=microesp
 SVC_GROUP=dialout
 SERVICE=microesp-agent.service
@@ -30,7 +41,7 @@ START=1
 BINARY=""
 
 usage() {
-	sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'
+	sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//'
 }
 
 log() { printf '==> %s\n' "$*"; }
@@ -62,6 +73,11 @@ while [ $# -gt 0 ]; do
 		BINARY="$2"
 		shift
 		;;
+	--scripts-user)
+		[ $# -ge 2 ] || die "--scripts-user needs a user name"
+		SCRIPTS_USER="$2"
+		shift
+		;;
 	-h | --help)
 		usage
 		exit 0
@@ -85,6 +101,70 @@ reload_udev() {
 		run udevadm trigger --action=change --subsystem-match=tty
 		run udevadm trigger --action=add --subsystem-match=usb --attr-match=idVendor=303a --attr-match=idProduct=4002
 	fi
+}
+
+# resolve_scripts_user validates --scripts-user, or takes the user of an
+# installed runner unit on reinstall. Empty = no runner.
+resolve_scripts_user() {
+	if [ -z "$SCRIPTS_USER" ] && [ -f "$RUNNER_SERVICE_FILE" ]; then
+		SCRIPTS_USER="$(sed -n 's/^User=//p' "$RUNNER_SERVICE_FILE" | head -n 1)"
+		if [ -n "$SCRIPTS_USER" ]; then
+			log "keeping the scripts runner as user $SCRIPTS_USER (installed unit)"
+		fi
+	fi
+	[ -n "$SCRIPTS_USER" ] || return 0
+	printf '%s' "$SCRIPTS_USER" | grep -Eq '^[a-z_][a-z0-9_.-]*[$]?$' || die "invalid user name: $SCRIPTS_USER"
+	case "$SCRIPTS_USER" in
+	root | "$SVC_USER") die "--scripts-user must be a regular user, not $SCRIPTS_USER" ;;
+	esac
+	if ! id "$SCRIPTS_USER" >/dev/null 2>&1; then
+		if [ "$DRY_RUN" -eq 1 ]; then
+			warn "user $SCRIPTS_USER does not exist (dry run continues)"
+		else
+			die "user $SCRIPTS_USER does not exist (--scripts-user needs an existing account)"
+		fi
+	fi
+}
+
+# install_runner_unit SRC DEST renders a runner unit for SCRIPTS_USER.
+install_runner_unit() {
+	local src="$1" dest="$2" tmp
+	if [ "$DRY_RUN" -eq 1 ]; then
+		printf '[dry-run] render %q (User %s) > %q\n' "$src" "$SCRIPTS_USER" "$dest"
+		return
+	fi
+	tmp="$(mktemp)"
+	sed "s/@SCRIPTS_USER@/$SCRIPTS_USER/g" "$src" >"$tmp"
+	install -D -m 0644 -o root -g root "$tmp" "$dest"
+	rm -f "$tmp"
+}
+
+# set_scripts_socket sets scripts_socket in agent.toml, keeping the rest of
+# the file, its owner and its mode. A new key goes before the first table
+# ([[scripts]]), where a top-level key must be.
+set_scripts_socket() {
+	local line="scripts_socket = \"$SCRIPTS_SOCK\"" tmp
+	if [ "$DRY_RUN" -eq 1 ]; then
+		printf '[dry-run] set %s in %q\n' "$line" "$CONF_FILE"
+		return
+	fi
+	if grep -Eq '^[[:space:]]*scripts_socket[[:space:]]*=' "$CONF_FILE"; then
+		sed -i -E "s|^[[:space:]]*scripts_socket[[:space:]]*=.*|$line|" "$CONF_FILE"
+		return
+	fi
+	tmp="$(mktemp)"
+	awk -v line="$line" '
+		function emit() {
+			print "# Set by install.sh --scripts-user: scripts run in microesp-scripts.service."
+			print line
+			done = 1
+		}
+		!done && /^[[:space:]]*\[/ { emit(); print "" }
+		{ print }
+		END { if (!done) { print ""; emit() } }
+	' "$CONF_FILE" >"$tmp"
+	cat "$tmp" >"$CONF_FILE"
+	rm -f "$tmp"
 }
 
 resolve_binary() {
@@ -116,6 +196,7 @@ resolve_binary() {
 
 do_install() {
 	local bin
+	resolve_scripts_user
 	bin="$(resolve_binary)"
 
 	log "group $SVC_GROUP and service user $SVC_USER"
@@ -150,6 +231,13 @@ do_install() {
 		warn "polkit not found: the service will not be able to power off/reboot without root"
 	fi
 
+	if [ -n "$SCRIPTS_USER" ]; then
+		log "user scripts runner as $SCRIPTS_USER ($RUNNER_SOCKET -> $SCRIPTS_SOCK)"
+		install_runner_unit "$SCRIPT_DIR/systemd/microesp-scripts.socket" "$RUNNER_SOCKET_FILE"
+		install_runner_unit "$SCRIPT_DIR/systemd/microesp-scripts.service" "$RUNNER_SERVICE_FILE"
+		set_scripts_socket
+	fi
+
 	log "systemd unit $SERVICE"
 	run install -D -m 0644 -o root -g root "$SCRIPT_DIR/systemd/microesp-agent.service" "$UNIT_FILE"
 	if systemd_running || [ "$DRY_RUN" -eq 1 ]; then
@@ -160,6 +248,11 @@ do_install() {
 			run systemctl restart "$SERVICE"
 		else
 			run systemctl enable "$SERVICE"
+		fi
+		if [ -n "$SCRIPTS_USER" ]; then
+			run systemctl enable --now "$RUNNER_SOCKET"
+			# Pick up a new binary or config if the runner is already running.
+			run systemctl try-restart "$RUNNER_SERVICE"
 		fi
 	else
 		warn "systemd is not active; enable $SERVICE manually"
@@ -184,8 +277,11 @@ do_uninstall() {
 		if [ -e "$UNIT_FILE" ] || [ "$DRY_RUN" -eq 1 ]; then
 			run systemctl disable --now "$SERVICE" || true
 		fi
+		if [ -e "$RUNNER_SOCKET_FILE" ] || [ -e "$RUNNER_SERVICE_FILE" ] || [ "$DRY_RUN" -eq 1 ]; then
+			run systemctl disable --now "$RUNNER_SOCKET" "$RUNNER_SERVICE" || true
+		fi
 	fi
-	for f in "$UNIT_FILE" "$POLKIT_FILE" "$UDEV_FILE" "$PREFIX_BIN"; do
+	for f in "$UNIT_FILE" "$RUNNER_SOCKET_FILE" "$RUNNER_SERVICE_FILE" "$POLKIT_FILE" "$UDEV_FILE" "$PREFIX_BIN"; do
 		if [ -e "$f" ] || [ "$DRY_RUN" -eq 1 ]; then
 			run rm -f "$f"
 		fi

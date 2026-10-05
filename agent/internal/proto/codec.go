@@ -8,6 +8,9 @@ import (
 	"fmt"
 	"io"
 	"regexp"
+	"strings"
+	"unicode"
+	"unicode/utf8"
 )
 
 // Error is a protocol error carrying one of the spec error codes.
@@ -44,6 +47,7 @@ var (
 	reSig   = regexp.MustCompile(`^[0-9a-f]{64}$`)
 	reDev   = regexp.MustCompile(`^[0-9a-f]{12}$`)
 	reMAC   = regexp.MustCompile(`^[0-9a-f]{2}(:[0-9a-f]{2}){5}$`)
+	reSID   = regexp.MustCompile(`^[a-z0-9_-]{1,12}$`)
 )
 
 // ValidNonce reports whether s is 16 lowercase hex chars.
@@ -54,6 +58,66 @@ func ValidSig(s string) bool { return reSig.MatchString(s) }
 
 // ValidMAC reports whether s is a lowercase aa:bb:cc:dd:ee:ff MAC.
 func ValidMAC(s string) bool { return reMAC.MatchString(s) }
+
+// ValidScriptID reports whether s matches ^[a-z0-9_-]{1,12}$.
+func ValidScriptID(s string) bool { return reSID.MatchString(s) }
+
+// CheckScriptLabel returns a description of what is wrong with a script
+// label, or "" if it is valid: 1..24 bytes of UTF-8, no control
+// characters, no '"' and no '\' (the dongle copies it into a JSON string
+// without escaping).
+func CheckScriptLabel(s string) string {
+	switch {
+	case s == "":
+		return "empty label"
+	case len(s) > MaxScriptLabelLen:
+		return fmt.Sprintf("label longer than %d bytes", MaxScriptLabelLen)
+	case !utf8.ValidString(s):
+		return "label is not valid UTF-8"
+	case strings.ContainsAny(s, `"\`):
+		return `label contains '"' or '\'`
+	case strings.IndexFunc(s, unicode.IsControl) >= 0:
+		return "label contains control characters"
+	}
+	return ""
+}
+
+// ScriptAction returns the cmd action that runs script id.
+func ScriptAction(id string) string { return ActionScriptPrefix + id }
+
+// ScriptID extracts the script id of a "script:<id>" action. ok is false
+// if action is not a script action or the id is malformed.
+func ScriptID(action string) (id string, ok bool) {
+	id, found := strings.CutPrefix(action, ActionScriptPrefix)
+	if !found || !ValidScriptID(id) {
+		return "", false
+	}
+	return id, true
+}
+
+// ValidateScriptList checks a scripts list against cdc-v1 §3.1.
+func ValidateScriptList(list []ScriptInfo) error {
+	if list == nil {
+		return errf(CodeBadMsg, "scripts: list is not an array")
+	}
+	if len(list) > MaxScripts {
+		return errf(CodeBadMsg, "scripts: more than %d items", MaxScripts)
+	}
+	seen := make(map[string]bool, len(list))
+	for _, s := range list {
+		if !ValidScriptID(s.ID) {
+			return errf(CodeBadMsg, "scripts: invalid id %q", s.ID)
+		}
+		if seen[s.ID] {
+			return errf(CodeBadMsg, "scripts: duplicate id %q", s.ID)
+		}
+		seen[s.ID] = true
+		if why := CheckScriptLabel(s.Label); why != "" {
+			return errf(CodeBadMsg, "scripts: id %q: %s", s.ID, why)
+		}
+	}
+	return nil
+}
 
 // Encode serialises m as one JSON line terminated by '\n'.
 // It fails if the line would exceed MaxLine bytes.
@@ -202,8 +266,12 @@ func Validate(m Message) error {
 		}
 	case *Cmd:
 		if x.Action != ActionShutdown && x.Action != ActionReboot {
-			return errf(AckUnknownAction, "action %q", x.Action)
+			if _, ok := ScriptID(x.Action); !ok {
+				return errf(AckUnknownAction, "action %q", x.Action)
+			}
 		}
+	case *Scripts:
+		return ValidateScriptList(x.List)
 	case *Err:
 		if x.Code == "" {
 			return errf(CodeBadMsg, "empty code")

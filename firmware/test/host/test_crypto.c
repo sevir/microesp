@@ -49,7 +49,7 @@ static void test_session_sigs_vector(void)
         TEST_ASSERT_EQUAL_STRING(cJSON_GetObjectItem(c, "sig")->valuestring, sig);
         n++;
     }
-    TEST_ASSERT_EQUAL(2, n);
+    TEST_ASSERT_EQUAL(3, n); /* shutdown, reboot, script:backup */
 }
 
 static void test_bad_sig_rejected(void)

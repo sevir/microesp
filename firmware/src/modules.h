@@ -49,6 +49,11 @@ bool power_cancel(const char *source);
 void power_tick(uint32_t now);
 void power_set_countdown(int s);
 
+/* scripts.c — user scripts list (DP 115) and runs (DP 116) */
+void scripts_init(void);
+void scripts_on_list(void); /* the agent sent a valid scripts{list} */
+void scripts_run(const char *id, const char *source);
+
 /* cloud.c — TuyaLink client glue (Wi-Fi + MQTT in mesp_hal/hal_cloud.c) */
 void cloud_init(void); /* boot thread, before the app task starts */
 void cloud_on_event(const app_ev_t *ev); /* EV_CLOUD */

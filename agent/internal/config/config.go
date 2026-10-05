@@ -7,11 +7,14 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
+
+	"github.com/microesp/agent/internal/proto"
 )
 
 // DeviceAuto selects USB discovery by VID/PID or product string.
@@ -50,7 +53,25 @@ type Config struct {
 	DryRun            bool     `toml:"dry_run"`
 	PowerBackend      string   `toml:"power_backend"`
 	LogLevel          string   `toml:"log_level"`
+	ScriptsSocket     string   `toml:"scripts_socket"`
+	Scripts           []Script `toml:"scripts"`
 }
+
+// DefaultScriptTimeout applies to a script without timeout.
+const DefaultScriptTimeout = 10 * time.Minute
+
+// Script is a user script ([[scripts]] table) that the owner allows the
+// dongle to start. Only ID and Label are sent to the dongle.
+type Script struct {
+	ID      string   `toml:"id"`
+	Label   string   `toml:"label"`
+	Command string   `toml:"command"`
+	Timeout Duration `toml:"timeout"`
+}
+
+// ErrInsecureConfig is returned when the configuration defines scripts but
+// can be modified by users other than its owner.
+var ErrInsecureConfig = errors.New("config file is writable by group or others; refusing to load [[scripts]] (chmod go-w)")
 
 // Default returns the built-in defaults.
 func Default() Config {
@@ -83,7 +104,35 @@ func Load(path string) (Config, error) {
 	default:
 		return cfg, fmt.Errorf("config %s: %w", path, err)
 	}
+	if len(cfg.Scripts) > 0 {
+		if err := CheckScriptsFile(path); err != nil {
+			return cfg, err
+		}
+	}
+	for i := range cfg.Scripts {
+		if cfg.Scripts[i].Timeout.Duration == 0 {
+			cfg.Scripts[i].Timeout.Duration = DefaultScriptTimeout
+		}
+	}
 	return cfg, nil
+}
+
+// CheckScriptsFile refuses a configuration file that defines scripts and
+// is writable by group or others: whoever can edit it can run commands as
+// the service user. The check is skipped on Windows, where the installer
+// restricts the ACL of the data directory instead.
+func CheckScriptsFile(path string) error {
+	if runtime.GOOS == "windows" {
+		return nil
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if perm := fi.Mode().Perm(); perm&0o022 != 0 {
+		return fmt.Errorf("%s: %w (mode is %04o)", path, ErrInsecureConfig, perm)
+	}
+	return nil
 }
 
 // Getenv abstracts os.Getenv for tests.
@@ -169,5 +218,39 @@ func (c *Config) Validate() error {
 	default:
 		errs = append(errs, fmt.Errorf("unknown log_level %q", c.LogLevel))
 	}
+	if c.ScriptsSocket != "" && !strings.HasPrefix(c.ScriptsSocket, "/") {
+		errs = append(errs, fmt.Errorf("scripts_socket must be an absolute path, got %q", c.ScriptsSocket))
+	}
+	errs = append(errs, c.validateScripts()...)
 	return errors.Join(errs...)
+}
+
+func (c *Config) validateScripts() []error {
+	var errs []error
+	if len(c.Scripts) > proto.MaxScripts {
+		errs = append(errs, fmt.Errorf("scripts: at most %d are allowed, got %d", proto.MaxScripts, len(c.Scripts)))
+	}
+	seen := map[string]bool{}
+	for i, s := range c.Scripts {
+		name := fmt.Sprintf("scripts[%d]", i)
+		if s.ID != "" {
+			name = fmt.Sprintf("scripts[%d] (%q)", i, s.ID)
+		}
+		if !proto.ValidScriptID(s.ID) {
+			errs = append(errs, fmt.Errorf("%s: id must match ^[a-z0-9_-]{1,12}$", name))
+		} else if seen[s.ID] {
+			errs = append(errs, fmt.Errorf("%s: duplicate id", name))
+		}
+		seen[s.ID] = true
+		if why := proto.CheckScriptLabel(s.Label); why != "" {
+			errs = append(errs, fmt.Errorf("%s: %s (1..%d bytes, no control characters, no '\"' or '\\')", name, why, proto.MaxScriptLabelLen))
+		}
+		if strings.TrimSpace(s.Command) == "" {
+			errs = append(errs, fmt.Errorf("%s: command is empty", name))
+		}
+		if s.Timeout.Duration < time.Second {
+			errs = append(errs, fmt.Errorf("%s: timeout must be >= 1s", name))
+		}
+	}
+	return errs
 }

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -69,8 +71,8 @@ func TestLoadErrors(t *testing.T) {
 }
 
 func TestLoadDefaultPathMissingOK(t *testing.T) {
-	if _, err := os.Stat(DefaultPath); err == nil {
-		t.Skip("default config exists on this host")
+	if _, err := os.Stat(DefaultPath); !errors.Is(err, fs.ErrNotExist) {
+		t.Skip("default config exists (or is unreadable) on this host")
 	}
 	if _, err := Load(""); err != nil {
 		t.Fatal(err)
@@ -137,5 +139,113 @@ func TestExampleConfigParses(t *testing.T) {
 	}
 	if !reflect.DeepEqual(c, Default()) && runtime.GOOS != "windows" {
 		t.Fatalf("example differs from defaults: %+v", c)
+	}
+}
+
+const scriptsTOML = `
+scripts_socket = "/run/microesp/scripts.sock"
+
+[[scripts]]
+id = "backup"
+label = "Backup NAS"
+command = "/usr/local/bin/backup.sh --full"
+timeout = "30m"
+
+[[scripts]]
+id = "docker-up"
+label = "Docker up"
+command = "docker compose up -d"
+`
+
+func TestLoadScripts(t *testing.T) {
+	c, err := Load(write(t, scriptsTOML))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	want := []Script{
+		{ID: "backup", Label: "Backup NAS", Command: "/usr/local/bin/backup.sh --full", Timeout: Duration{30 * time.Minute}},
+		{ID: "docker-up", Label: "Docker up", Command: "docker compose up -d", Timeout: Duration{DefaultScriptTimeout}},
+	}
+	if c.ScriptsSocket != "/run/microesp/scripts.sock" {
+		t.Errorf("scripts_socket = %q", c.ScriptsSocket)
+	}
+	if !reflect.DeepEqual(c.Scripts, want) {
+		t.Fatalf("scripts = %+v", c.Scripts)
+	}
+	if _, err := Load(write(t, "[[scripts]]\nid = \"a\"\nlabel = \"A\"\ncommand = \"true\"\nuser = \"root\"\n")); err == nil ||
+		!strings.Contains(err.Error(), "unknown keys") {
+		t.Errorf("per-script user accepted: %v", err)
+	}
+}
+
+func TestScriptsFilePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("permission check is Unix only")
+	}
+	p := write(t, scriptsTOML)
+	for _, mode := range []os.FileMode{0o620, 0o602, 0o666} {
+		if err := os.Chmod(p, mode); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(p); !errors.Is(err, ErrInsecureConfig) {
+			t.Errorf("mode %04o: err = %v, want ErrInsecureConfig", mode, err)
+		}
+	}
+	for _, mode := range []os.FileMode{0o600, 0o640, 0o644} {
+		if err := os.Chmod(p, mode); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Load(p); err != nil {
+			t.Errorf("mode %04o: %v", mode, err)
+		}
+	}
+	// Without scripts a writable file is still accepted (unchanged behaviour).
+	q := write(t, `device = "auto"`)
+	if err := os.Chmod(q, 0o666); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Load(q); err != nil {
+		t.Errorf("no scripts: %v", err)
+	}
+	if err := CheckScriptsFile(filepath.Join(t.TempDir(), "missing")); err == nil {
+		t.Error("missing file accepted")
+	}
+}
+
+func TestValidateScripts(t *testing.T) {
+	ok := Script{ID: "a", Label: "A", Command: "true", Timeout: Duration{time.Minute}}
+	cases := map[string]func(c *Config){
+		"at most 5": func(c *Config) {
+			for _, id := range []string{"b", "c", "d", "e", "f"} {
+				s := ok
+				s.ID = id
+				c.Scripts = append(c.Scripts, s)
+			}
+		},
+		"id must match":    func(c *Config) { c.Scripts[0].ID = "Backup" },
+		"duplicate id":     func(c *Config) { c.Scripts = append(c.Scripts, ok) },
+		"empty label":      func(c *Config) { c.Scripts[0].Label = "" },
+		"longer than":      func(c *Config) { c.Scripts[0].Label = strings.Repeat("x", 25) },
+		"'\"' or '\\'":     func(c *Config) { c.Scripts[0].Label = `say "hi"` },
+		"control":          func(c *Config) { c.Scripts[0].Label = "a\nb" },
+		"command is empty": func(c *Config) { c.Scripts[0].Command = "  " },
+		"timeout must be":  func(c *Config) { c.Scripts[0].Timeout.Duration = -time.Second },
+		"scripts_socket":   func(c *Config) { c.ScriptsSocket = "run/x.sock" },
+	}
+	for want, mutate := range cases {
+		c := Default()
+		c.Scripts = []Script{ok}
+		mutate(&c)
+		if err := c.Validate(); err == nil || !strings.Contains(err.Error(), want) {
+			t.Errorf("%s: err = %v", want, err)
+		}
+	}
+	c := Default()
+	c.Scripts = []Script{ok}
+	if err := c.Validate(); err != nil {
+		t.Fatal(err)
 	}
 }

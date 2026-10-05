@@ -134,6 +134,7 @@ static void user_main(void)
 
     state_init();
     power_init();
+    scripts_init();
     wake_mod_init();
     agent_link_init();
     pairing_init();

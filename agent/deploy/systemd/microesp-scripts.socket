@@ -1,0 +1,18 @@
+# /etc/systemd/system/microesp-scripts.socket
+# Socket of the MicroESP user scripts runner. Rendered by install.sh
+# --scripts-user NAME (@SCRIPTS_USER@ is replaced by that user).
+# Only the agent (user microesp, group microesp) and the runner's user can
+# connect; the runner also checks the peer uid (SO_PEERCRED).
+[Unit]
+Description=MicroESP user scripts runner socket
+
+[Socket]
+ListenStream=/run/microesp/scripts.sock
+SocketUser=@SCRIPTS_USER@
+SocketGroup=microesp
+SocketMode=0660
+DirectoryMode=0755
+RemoveOnStop=yes
+
+[Install]
+WantedBy=sockets.target

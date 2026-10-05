@@ -30,12 +30,14 @@ firmware/
 │   ├── state.c            # pc_state (DP 101) and fault bitmap (DP 114)
 │   ├── wake.c             # HID / WOL power-on
 │   ├── power.c            # shutdown/reboot with countdown
+│   ├── scripts.c          # user scripts: list (DP 115) and runs (DP 116)
 │   ├── button.c led.c display.c ota.c cli.c
 │   └── core/              # pure C logic, NO RTOS/IDF dependencies (host tests)
 │       ├── link_proto.c   # cdc-v1 protocol (parser, session, signing, pairing)
 │       ├── mesp_crypto.c  # HMAC-SHA256 and HKDF-SHA256 (mbedTLS)
 │       ├── pc_state.c     # PC state machine
 │       ├── powercmd.c     # countdown → cmd → ack flow
+│       ├── scriptcmd.c    # script run → cmd script:<id> → ack flow
 │       ├── wake_fsm.c     # power-on sequence and WOL magic packet
 │       ├── button_fsm.c   # button gestures
 │       ├── dp_model.c     # DP table, thresholds and throttling
@@ -160,7 +162,7 @@ Any process with access to the port (`dialout` group or root) can write to the C
 
 | Command | Release | Dev | What it does |
 |---|---|---|---|
-| `!status` | yes | yes | summary: version, USB, pc_state, faults, agent, telemetry, power, wake, pairing, variant/window, TuyaLink (region, productId, masked deviceId, MQTT state, attempts, last error, reports and how long ago the last one was, received commands), Wi-Fi (SSID, IP, RSSI, SNTP time), heap. No secrets |
+| `!status` | yes | yes | summary: version, USB, pc_state, faults, agent, telemetry, power, scripts (ids of the agent's list, runs and results), wake, pairing, variant/window, TuyaLink (region, productId, masked deviceId, MQTT state, attempts, last error, reports and how long ago the last one was, received commands), Wi-Fi (SSID, IP, RSSI, SNTP time), heap. No secrets |
 | `!version`, `!dp`, `!help` | yes | yes | version / current DP values (JSON) / help |
 | `!log` | yes | yes | log buffer (HAL), redacted (see "Logs") |
 | `!cancel` | yes | yes | cancels the countdown or the scheduled `!cmd` |
@@ -217,15 +219,17 @@ Screens: **status** (PC state, hostname, Wi-Fi/cloud/agent icons and version), *
 
 ## DPs
 
-Full table in `schema/dp.json`. In TuyaLink each DP is a **property** of the thing model identified by its **code** (`pc_state`, `power_on`...); the numbers 101-114 are the platform's `abilityId` and are kept as the internal key and in the documentation. JSON encoding: bool → `true/false`; value → integer (scale 1: tenths of %); **enum → string** (`"on"`, `"hid_then_wol"`...; verified against the model returned by `model/get_response`); bitmap (`fault`) → integer with the mask; string → string. Topics (`tylink/<deviceId>/thing/...`): it publishes `property/report`, `property/set_response`, `action/execute_response` and `model/get` (once per connection); it subscribes to `property/set`, `action/execute`, `model/get_response` and `property/report_response`.
+Full table in `schema/dp.json`. In TuyaLink each DP is a **property** of the thing model identified by its **code** (`pc_state`, `power_on`...); the numbers 101-116 are the platform's `abilityId` and are kept as the internal key and in the documentation. JSON encoding: bool → `true/false`; value → integer (scale 1: tenths of %); **enum → string** (`"on"`, `"hid_then_wol"`...; verified against the model returned by `model/get_response`); bitmap (`fault`) → integer with the mask; string → string (escaped: DP 115 carries compact JSON inside a JSON string). Topics (`tylink/<deviceId>/thing/...`): it publishes `property/report`, `property/set_response`, `action/execute_response` and `model/get` (once per connection); it subscribes to `property/set`, `action/execute`, `model/get_response` and `property/report_response`.
 
-- **Commands (`property/set`)**: it may carry several properties. Each one is validated (known code, writable, correct JSON type, range); the valid ones are applied in order and the others are rejected one by one. The reply is `property/set_response` with the same `msgId` and `code` 0 if all were valid or 1 if any was rejected. A message without `msgId` (1..32 characters) or without a `data` object is discarded without a reply. `action/execute` always replies `code` 1 (the model has no actions).
+- **Commands (`property/set`)**: it may carry several properties. Each one is validated (known code, writable, correct JSON type, range; for the only writable string, `script_run`: `""` or `[a-z0-9_-]{1,12}`); the valid ones are applied in order and the others are rejected one by one. The reply is `property/set_response` with the same `msgId` and `code` 0 if all were valid or 1 if any was rejected. A message without `msgId` (1..32 characters) or without a `data` object is discarded without a reply. `action/execute` always replies `code` 1 (the model has no actions).
 
 Summary:
 
 - **101 `pc_state`**: PC state. **102 `power_on`**: push button; returns to `false`. **103/104 `power_off`/`reboot`**: `true` starts the countdown and `false` during the countdown cancels it; they return to `false` when it ends.
 - **105/106/107**: CPU, memory and free disk in tenths of %, from 0 to 1000. **108 `agent_online`**. **109 `wake_method`**: stored in NVS. **110 `pc_uptime`**. **111 `pc_hostname`**. **112 `cmd_countdown`**: from 0 to 60, 10 by default, stored in NVS. **113 `last_result`**.
 - **114 `fault`**: bit0 `agent_lost`, bit1 `wake_failed`, bit2 `hid_not_armed`, bit3 `cloud_lost` (no `vbus_low`). Consecutive ids: the Tuya platform assigns them in sequence.
+- **115 `scripts`** (string, ro, max 255): the agent's user scripts as compact JSON `[["<id>","<label>"],...]` (0..5 items, at most 221 bytes). Not reported until the agent has sent its list once. **116 `script_run`** (string, rw, max 12): push button; see "User scripts".
+- **Before flashing a firmware with DPs 115/116**, create them in the Tuya platform (product → function definition → custom TuyaLink properties): code `scripts`, type string, max length 255, read-only (report only); code `script_run`, type string, max length 12, read-write (send and report). The platform assigns the `abilityId`s in sequence: check that they are 115 and 116 (the firmware only uses the codes on the wire, but the docs, `schema/dp.json` and the panel use the numbers). Without them the cloud may reject every report that carries them, including the other properties of the same message (`property/report_response` with an error code, counted in `!status` as `cloud_report_errors`).
 - **Reporting policy**: asynchronous, from the application task and only with MQTT connected.
   - Telemetry: if it changes ≥ 20 tenths (with at least 5 s between reports) or any change every 30 s.
   - Uptime: at most one per minute.
@@ -276,6 +280,19 @@ The command is **never ignored**, even if the PC seems to be on: with Lenovo *Sm
 5. DP 103/104 return to `false`.
 
 If the agent session drops with a pending `cmd` (port closed, agent restarted, new `hello` or re-pairing), the `ack` can no longer arrive. It is resolved at that moment as `cmd_rejected`. Previously the flow would wait forever and reject any later command as "busy".
+
+## User scripts (cdc-v1 §3.1)
+
+The agent defines up to 5 scripts (`[[scripts]]` in `agent.toml`); only their `id` and `label` reach the dongle, in a `scripts{list}` message after every `ready`. The dongle validates it (ids `^[a-z0-9_-]{1,12}$` and unique, labels 1..24 bytes of valid UTF-8 without control characters, `"` or `\`); an invalid list gets `err{bad_msg}` and the previous one is kept, and `scripts` before `ready` gets `err{unauth}`. The list lives in RAM only and is kept when the agent session drops (the panel hides it while `agent_online` is false); each valid list replaces it and updates DP 115.
+
+1. DP 116 `script_run` set to `<id>` (`""` is a no-op). The DP is always reported back to `""`.
+2. No authenticated agent session (or the agent is not online): `last_result=agent_offline`.
+3. `<id>` not in the current list, or another script `cmd` still awaiting its `ack`: `cmd_rejected`.
+4. Otherwise the signed `cmd{action:"script:<id>"}` is sent (same signature and id counter as shutdown/reboot). `ack ok` → `last_result=ok` (the agent runs the script in the background); negative `ack`, no `ack` within 10 s or the session dropping → `cmd_rejected`.
+
+The link keeps one pending `cmd` per class (power / script), so a script run never delays, blocks or cancels a running shutdown/reboot countdown, and a shutdown `cmd` can be sent while a script `cmd` awaits its `ack`.
+
+RAM: string DPs no longer reserve 2 × 65 bytes in every DP slot; `dp_model_t` has one pool with the current and the last reported copy of each string DP at its own maximum (64 + 255 + 12 bytes plus NULs, twice), which is less than before for 16 DPs. The report buffer is `TYL_REPORT_MAX` (1920 bytes, within the 2048-byte esp-mqtt buffer); a host test checks that every DP at its widest value fits.
 
 ## OTA and rollback (US-0011)
 

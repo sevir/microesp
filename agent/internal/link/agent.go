@@ -9,8 +9,20 @@ import (
 
 	"github.com/microesp/agent/internal/power"
 	"github.com/microesp/agent/internal/proto"
+	"github.com/microesp/agent/internal/scripts"
 	"github.com/microesp/agent/internal/telemetry"
 )
+
+// ScriptStarter starts a script out of process (scripts.Client). Start
+// returns nil once the script was started, scripts.ErrUnknown,
+// scripts.ErrBusy or another error if it could not be asked.
+type ScriptStarter interface {
+	Start(ctx context.Context, id string) error
+}
+
+// scriptsReplyWindow is how long after sending scripts an err{bad_msg} is
+// attributed to a dongle firmware without scripts support.
+const scriptsReplyWindow = 3 * time.Second
 
 // Agent maintains the session with the dongle: discovery, handshake,
 // telemetry, heartbeat, command handling and reconnection.
@@ -22,8 +34,12 @@ type Agent struct {
 	HostInfo  func() (telemetry.HostInfo, error)
 	Collector telemetry.Collector
 	Executor  power.Executor
-	Version   string
-	OS        string
+	Scripts   *scripts.Runner // user scripts (list, and local runs); nil = none
+	// ScriptsRemote, if set, starts scripts in the external scripts runner
+	// (scripts_socket) instead of running them in the agent process.
+	ScriptsRemote ScriptStarter
+	Version       string
+	OS            string
 
 	TelemetryInterval time.Duration // default 10s
 	HeartbeatInterval time.Duration // default 5s; also the CPU sampling window
@@ -156,6 +172,13 @@ func (a *Agent) serve(ctx context.Context, c *Conn, key []byte, sess *Session) e
 		period = time.Millisecond
 	}
 	slack := period / 2
+	// Announce the user scripts (cdc-v1 §3.1), also when there are none so
+	// the dongle drops a list from a previous configuration.
+	if err := c.Send(&proto.Scripts{List: a.Scripts.List()}); err != nil {
+		return fmt.Errorf("send scripts: %w", err)
+	}
+	scriptsSent := time.Now()
+
 	var (
 		seq       uint32
 		lastID    uint32
@@ -226,6 +249,12 @@ func (a *Agent) serve(ctx context.Context, c *Conn, key []byte, sess *Session) e
 				if m.Code == proto.CodeUnauth || m.Code == proto.CodeNotPaired {
 					return &DongleError{Code: m.Code} // dongle lost our session
 				}
+				if m.Code == proto.CodeBadMsg && !scriptsSent.IsZero() && time.Since(scriptsSent) < scriptsReplyWindow {
+					// Old firmware: it does not know the scripts message.
+					scriptsSent = time.Time{}
+					a.Log.Warn("dongle rejected the scripts list (firmware without user scripts support?); continuing without scripts")
+					continue
+				}
 				a.Log.Warn("dongle reported error", "code", m.Code)
 			default:
 				a.Log.Debug("ignoring message in ready state", "t", m.Type())
@@ -261,6 +290,9 @@ func (a *Agent) handleCmd(ctx context.Context, c *Conn, key []byte, sess *Sessio
 	if cmd.ID <= *lastID {
 		return reject(proto.AckReplay)
 	}
+	if id, ok := proto.ScriptID(cmd.Action); ok {
+		return a.handleScript(ctx, c, cmd, id, lastID, reject)
+	}
 	if cmd.Action != proto.ActionShutdown && cmd.Action != proto.ActionReboot {
 		return reject(proto.AckUnknownAction)
 	}
@@ -281,5 +313,59 @@ func (a *Agent) handleCmd(ctx context.Context, c *Conn, key []byte, sess *Sessio
 	if err := a.Executor.Execute(ectx, cmd.Action); err != nil {
 		a.Log.Error("power action failed", "action", cmd.Action, "err", err)
 	}
+	return nil
+}
+
+// handleScript runs cmd{action:"script:<id>"} (cdc-v1 §3.1) after the
+// signature and id checks: unknown id -> unknown_action, already running
+// -> exec_failed, otherwise ack ok and run in the background so the session
+// loop is never blocked. Scripts survive a lost session; they are bound to
+// the agent context and are killed when the agent stops.
+func (a *Agent) handleScript(ctx context.Context, c *Conn, cmd *proto.Cmd, id string, lastID *uint32, reject func(string) error) error {
+	if a.ScriptsRemote != nil {
+		return a.handleRemoteScript(ctx, c, cmd, id, lastID, reject)
+	}
+	job, err := a.Scripts.Acquire(id)
+	if errors.Is(err, scripts.ErrUnknown) {
+		return reject(proto.AckUnknownAction)
+	}
+	*lastID = cmd.ID
+	if err != nil {
+		return reject(proto.AckExecFailed)
+	}
+	if err := c.Send(&proto.Ack{ID: cmd.ID, OK: true}); err != nil {
+		job.Release() // the dongle never learnt we accepted it
+		return fmt.Errorf("send ack: %w", err)
+	}
+	a.Log.Info("command accepted", "id", cmd.ID, "action", cmd.Action)
+	job.Start(ctx)
+	return nil
+}
+
+// handleRemoteScript asks the scripts runner to start the script BEFORE
+// acking, so the ack reflects whether it really started. The call blocks the
+// session loop for at most the client timeout (~2 s), well below the
+// dongle's 15 s offline threshold.
+func (a *Agent) handleRemoteScript(ctx context.Context, c *Conn, cmd *proto.Cmd, id string, lastID *uint32, reject func(string) error) error {
+	if !a.Scripts.Has(id) {
+		return reject(proto.AckUnknownAction)
+	}
+	*lastID = cmd.ID
+	err := a.ScriptsRemote.Start(ctx, id)
+	switch {
+	case err == nil:
+	case errors.Is(err, scripts.ErrUnknown):
+		a.Log.Warn("scripts runner does not know the script (restart microesp-scripts.service after editing agent.toml)", "script", id)
+		return reject(proto.AckUnknownAction)
+	case errors.Is(err, scripts.ErrBusy):
+		return reject(proto.AckExecFailed)
+	default:
+		a.Log.Error("scripts runner failed (is microesp-scripts.socket enabled?)", "script", id, "err", err)
+		return reject(proto.AckExecFailed)
+	}
+	if err := c.Send(&proto.Ack{ID: cmd.ID, OK: true}); err != nil {
+		return fmt.Errorf("send ack (script %s already started by the runner): %w", id, err)
+	}
+	a.Log.Info("command accepted", "id", cmd.ID, "action", cmd.Action, "via", "runner")
 	return nil
 }

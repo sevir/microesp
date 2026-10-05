@@ -23,16 +23,27 @@ static bool has(const uint8_t *ids, int n, uint8_t id)
 
 static void test_table_matches_spec(void)
 {
-    const uint8_t ids[] = {101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114};
+    const uint8_t ids[] = {101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116};
     TEST_ASSERT_EQUAL(sizeof(ids), DPM_COUNT);
     for (size_t i = 0; i < sizeof(ids); i++) TEST_ASSERT_NOT_NULL(dpm_desc(ids[i]));
-    TEST_ASSERT_NULL(dpm_desc(115)); /* unknown */
+    TEST_ASSERT_NULL(dpm_desc(117)); /* unknown */
     TEST_ASSERT_EQUAL(DPT_ENUM, dpm_desc(DP_PC_STATE)->type);
     TEST_ASSERT_EQUAL(5, dpm_desc(DP_PC_STATE)->max);
     TEST_ASSERT_EQUAL(DPT_BITMAP, dpm_desc(DP_FAULT)->type);
     TEST_ASSERT_EQUAL(0x0f, dpm_desc(DP_FAULT)->max); /* 4 bits, no vbus_low */
     TEST_ASSERT_EQUAL(60, dpm_desc(DP_CMD_COUNTDOWN)->max);
     TEST_ASSERT_EQUAL(DPT_STR, dpm_desc(DP_PC_HOSTNAME)->type);
+    TEST_ASSERT_EQUAL(DPT_STR, dpm_desc(DP_SCRIPTS)->type);
+    TEST_ASSERT_FALSE(dpm_desc(DP_SCRIPTS)->writable);
+    TEST_ASSERT_EQUAL(255, dpm_desc(DP_SCRIPTS)->max);
+    TEST_ASSERT_EQUAL(DPT_STR, dpm_desc(DP_SCRIPT_RUN)->type);
+    TEST_ASSERT_TRUE(dpm_desc(DP_SCRIPT_RUN)->writable);
+    TEST_ASSERT_EQUAL(12, dpm_desc(DP_SCRIPT_RUN)->max);
+    /* the string pool holds exactly one copy of every string DP */
+    int pool = 0;
+    for (int i = 0; i < DPM_COUNT; i++)
+        if (dpm_desc_at(i)->type == DPT_STR) pool += dpm_desc_at(i)->max + 1;
+    TEST_ASSERT_EQUAL(DPM_STR_POOL, pool);
     for (int i = 0; i < DPM_COUNT; i++) TEST_ASSERT_TRUE(dpm_desc_at(i)->min_interval_ms >= 300); /* <=200/min */
 }
 
@@ -64,6 +75,7 @@ static void test_schema_json_in_sync(void)
                 TEST_ASSERT_EQUAL_STRING(cJSON_GetArrayItem(r, k)->valuestring, dpm_enum_name(x->id, k));
         }
         if (x->type == DPT_BITMAP) TEST_ASSERT_EQUAL(4, cJSON_GetArraySize(cJSON_GetObjectItem(d, "label")));
+        if (x->type == DPT_STR) TEST_ASSERT_EQUAL(x->max, cJSON_GetObjectItem(d, "maxlen")->valueint);
         if (x->type == DPT_VALUE) {
             TEST_ASSERT_EQUAL(x->min, cJSON_GetObjectItem(d, "min")->valueint);
             TEST_ASSERT_EQUAL(x->max, cJSON_GetObjectItem(d, "max")->valueint);
@@ -144,7 +156,71 @@ static void test_decode_writes(void)
     TEST_ASSERT_EQUAL(-1, dpm_decode_write(DP_CMD_COUNTDOWN, DPT_VALUE, -1, &v));
     TEST_ASSERT_EQUAL(-1, dpm_decode_write(DP_CMD_COUNTDOWN, DPT_BOOL, 1, &v)); /* wrong type */
     TEST_ASSERT_EQUAL(-1, dpm_decode_write(DP_PC_STATE, DPT_ENUM, 1, &v));      /* read-only */
-    TEST_ASSERT_EQUAL(-1, dpm_decode_write(115, DPT_VALUE, 1, &v));            /* unknown */
+    TEST_ASSERT_EQUAL(-1, dpm_decode_write(117, DPT_VALUE, 1, &v));            /* unknown */
+    /* string writes: only script_run is writable */
+    TEST_ASSERT_EQUAL(0, dpm_decode_write_str(DP_SCRIPT_RUN, "backup"));
+    TEST_ASSERT_EQUAL(0, dpm_decode_write_str(DP_SCRIPT_RUN, "docker-up_12"));
+    TEST_ASSERT_EQUAL(0, dpm_decode_write_str(DP_SCRIPT_RUN, "")); /* reset: no-op */
+    TEST_ASSERT_EQUAL(-1, dpm_decode_write_str(DP_SCRIPT_RUN, "abcdefghijklm")); /* 13 */
+    TEST_ASSERT_EQUAL(-1, dpm_decode_write_str(DP_SCRIPT_RUN, "Backup"));
+    TEST_ASSERT_EQUAL(-1, dpm_decode_write_str(DP_SCRIPT_RUN, "a b"));
+    TEST_ASSERT_EQUAL(-1, dpm_decode_write_str(DP_SCRIPT_RUN, "a\"b"));
+    TEST_ASSERT_EQUAL(-1, dpm_decode_write_str(DP_SCRIPT_RUN, NULL));
+    TEST_ASSERT_EQUAL(-1, dpm_decode_write_str(DP_SCRIPTS, "[]"));      /* read-only */
+    TEST_ASSERT_EQUAL(-1, dpm_decode_write_str(DP_PC_HOSTNAME, "x"));   /* read-only */
+    TEST_ASSERT_EQUAL(-1, dpm_decode_write_str(DP_CMD_COUNTDOWN, "1")); /* not a string */
+}
+
+/* Strings live in a per-DP pool: each string DP holds up to its own maximum and they
+ * never overlap; DP 115 is not reported until it is set (agent sent its list). */
+static void test_string_pool_and_scripts_dps(void)
+{
+    uint8_t ids[DPM_COUNT];
+    dpm_init(&M);
+    char host[DPM_HOST_MAX + 2], scripts[DPM_SCRIPTS_MAX + 2], run[DPM_SCRIPT_RUN_MAX + 2];
+    memset(host, 'h', sizeof(host) - 1);
+    host[sizeof(host) - 1] = 0;
+    memset(scripts, 's', sizeof(scripts) - 1);
+    scripts[sizeof(scripts) - 1] = 0;
+    memset(run, 'r', sizeof(run) - 1);
+    run[sizeof(run) - 1] = 0;
+    /* one byte too long: refused, DP unchanged (and still not valid) */
+    TEST_ASSERT_FALSE(dpm_set_str(&M, DP_PC_HOSTNAME, host));
+    TEST_ASSERT_FALSE(dpm_set_str(&M, DP_SCRIPTS, scripts));
+    TEST_ASSERT_FALSE(dpm_set_str(&M, DP_SCRIPT_RUN, run));
+    TEST_ASSERT_FALSE(dpm_set_str(&M, DP_CPU, "1"));
+    TEST_ASSERT_EQUAL(0, dpm_collect(&M, 0, ids, DPM_COUNT));
+    /* exactly the maximum: accepted, no overlap between neighbours */
+    host[DPM_HOST_MAX] = 0;
+    scripts[DPM_SCRIPTS_MAX] = 0;
+    run[DPM_SCRIPT_RUN_MAX] = 0;
+    TEST_ASSERT_TRUE(dpm_set_str(&M, DP_PC_HOSTNAME, host));
+    TEST_ASSERT_TRUE(dpm_set_str(&M, DP_SCRIPTS, scripts));
+    TEST_ASSERT_TRUE(dpm_set_str(&M, DP_SCRIPT_RUN, run));
+    TEST_ASSERT_EQUAL_STRING(host, dpm_get_str(&M, DP_PC_HOSTNAME));
+    TEST_ASSERT_EQUAL_STRING(scripts, dpm_get_str(&M, DP_SCRIPTS));
+    TEST_ASSERT_EQUAL_STRING(run, dpm_get_str(&M, DP_SCRIPT_RUN));
+    TEST_ASSERT_EQUAL_STRING("", dpm_get_str(&M, DP_CPU));
+    TEST_ASSERT_EQUAL(3, collect_mark(0, ids));
+    TEST_ASSERT_EQUAL(0, collect_mark(5000, ids));
+    /* changes of one string DP do not touch the reported copy of another */
+    TEST_ASSERT_TRUE(dpm_set_str(&M, DP_SCRIPTS, "[[\"backup\",\"Backup NAS\"]]"));
+    int n = collect_mark(6000, ids);
+    TEST_ASSERT_EQUAL(1, n);
+    TEST_ASSERT_EQUAL(DP_SCRIPTS, ids[0]);
+    /* script_run push button: reset to "" and forced even if unchanged */
+    TEST_ASSERT_TRUE(dpm_set_str(&M, DP_SCRIPT_RUN, ""));
+    TEST_ASSERT_EQUAL(1, collect_mark(7000, ids));
+    dpm_force(&M, DP_SCRIPT_RUN);
+    TEST_ASSERT_EQUAL(1, collect_mark(7001, ids));
+    TEST_ASSERT_EQUAL(DP_SCRIPT_RUN, ids[0]);
+    char b[1024];
+    dpm_to_json(&M, b, sizeof(b));
+    cJSON *j = cJSON_Parse(b);
+    TEST_ASSERT_NOT_NULL_MESSAGE(j, b);
+    TEST_ASSERT_EQUAL_STRING("[[\"backup\",\"Backup NAS\"]]", cJSON_GetObjectItem(j, "115")->valuestring);
+    TEST_ASSERT_EQUAL_STRING("", cJSON_GetObjectItem(j, "116")->valuestring);
+    cJSON_Delete(j);
 }
 
 static void test_json_dump(void)
@@ -201,5 +277,6 @@ void run_dp_model_tests(void)
     RUN_TEST(test_telemetry_threshold_and_periodic);
     RUN_TEST(test_force_all_and_strings);
     RUN_TEST(test_decode_writes);
+    RUN_TEST(test_string_pool_and_scripts_dps);
     RUN_TEST(test_json_dump);
 }

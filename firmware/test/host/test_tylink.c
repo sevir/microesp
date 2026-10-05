@@ -8,6 +8,7 @@
 
 #include "cJSON.h"
 #include "dp_model.h"
+#include "link_proto.h"
 #include "pc_state.h"
 #include "powercmd.h"
 #include "tylink.h"
@@ -137,7 +138,7 @@ static void test_build_report(void)
     TEST_ASSERT_NOT_NULL(strstr(buf, "\"cpu_usage\":{\"value\":123,\"time\":1759536000123}"));
 
     /* errors: unknown DP, invalid enum value, buffer too small, nothing to report */
-    tyl_prop_t bad = {115, 0, NULL};
+    tyl_prop_t bad = {117, 0, NULL};
     TEST_ASSERT_EQUAL(-1, tyl_build_report(&bad, 1, "m", 1, buf, sizeof(buf)));
     TEST_ASSERT_EQUAL_STRING("", buf);
     tyl_prop_t badenum = {DP_PC_STATE, 9, NULL};
@@ -146,23 +147,116 @@ static void test_build_report(void)
     TEST_ASSERT_EQUAL(-1, tyl_build_report(p, 0, "m1", 1, buf, sizeof(buf)));
 }
 
+static int parse(const char *s, tyl_set_t *o) { return tyl_parse_set(s, strlen(s), o); }
+
 static void test_report_all_fits(void)
 {
-    /* every DP with its widest value (64-char hostname) fits the firmware buffer */
-    char host[DPM_STR_MAX + 1];
-    memset(host, 'h', DPM_STR_MAX);
-    host[DPM_STR_MAX] = 0;
+    /* every DP with its widest value fits TYL_REPORT_MAX: a 64-byte hostname made of
+     * control characters (each escaped to 6 bytes), the longest possible scripts list
+     * (5 items, 12-byte ids, 24-byte labels: 221 bytes, 20 quotes to escape) and a
+     * 12-byte script_run */
+    char host[DPM_HOST_MAX + 1], run[DPM_SCRIPT_RUN_MAX + 1], scripts[LINK_SCRIPTS_JSON_MAX + 1];
+    memset(host, 0x01, DPM_HOST_MAX);
+    host[DPM_HOST_MAX] = 0;
+    memset(run, 'r', DPM_SCRIPT_RUN_MAX);
+    run[DPM_SCRIPT_RUN_MAX] = 0;
+    int o = sprintf(scripts, "[");
+    for (int i = 0; i < LINK_MAX_SCRIPTS; i++)
+        o += sprintf(scripts + o, "%s[\"%011d\",\"%024d\"]", i ? "," : "", i, i); /* 11 digits + 1 = 12 */
+    o += sprintf(scripts + o, "]");
+    TEST_ASSERT_TRUE(o <= LINK_SCRIPTS_JSON_MAX + 1);
     tyl_prop_t p[DPM_COUNT];
     for (int i = 0; i < DPM_COUNT; i++) {
         const dpm_desc_t *d = dpm_desc_at(i);
-        p[i] = (tyl_prop_t){d->id, d->type == DPT_ENUM ? 0 : d->max, host};
+        const char *s = d->id == DP_PC_HOSTNAME ? host : d->id == DP_SCRIPTS ? scripts : run;
+        p[i] = (tyl_prop_t){d->id, d->type == DPT_ENUM ? 0 : d->type == DPT_STR ? 0 : d->max, s};
     }
-    char buf[1536];
+    static char buf[TYL_REPORT_MAX];
     int n = tyl_build_report(p, DPM_COUNT, "0123456789abcdef", 1759536000123LL, buf, sizeof(buf));
-    TEST_ASSERT_TRUE(n > 0 && n < 1200);
+    TEST_ASSERT_TRUE_MESSAGE(n > 0, "worst-case report does not fit TYL_REPORT_MAX");
+    TEST_ASSERT_TRUE(n < TYL_REPORT_MAX - 128); /* margin */
     cJSON *j = cJSON_Parse(buf);
-    TEST_ASSERT_EQUAL(DPM_COUNT, cJSON_GetArraySize(cJSON_GetObjectItem(j, "data")));
+    cJSON *d = cJSON_GetObjectItem(j, "data");
+    TEST_ASSERT_EQUAL(DPM_COUNT, cJSON_GetArraySize(d));
+    TEST_ASSERT_EQUAL_STRING(scripts, cJSON_GetObjectItem(cJSON_GetObjectItem(d, "scripts"), "value")->valuestring);
+    TEST_ASSERT_EQUAL_STRING(host, cJSON_GetObjectItem(cJSON_GetObjectItem(d, "pc_hostname"), "value")->valuestring);
     cJSON_Delete(j);
+}
+
+/* DP 115 carries compact JSON inside a JSON string: its quotes must be escaped and the
+ * value must round-trip; strings over the DP maximum are refused. */
+static void test_report_scripts_escaping(void)
+{
+    char buf[512];
+    const char *list = "[[\"backup\",\"Backup NAS\"],[\"docker-up\",\"Docker up \xc3\xb1\"]]";
+    tyl_prop_t p[] = {{DP_SCRIPTS, 0, list}, {DP_SCRIPT_RUN, 0, ""}};
+    int n = tyl_build_report(p, 2, "m", 5, buf, sizeof(buf));
+    TEST_ASSERT_TRUE(n > 0);
+    TEST_ASSERT_NOT_NULL_MESSAGE(
+        strstr(buf, "\"scripts\":{\"value\":\"[[\\\"backup\\\",\\\"Backup NAS\\\"],[\\\"docker-up\\\",\\\"Docker up "
+                    "\xc3\xb1\\\"]]\",\"time\":5}"),
+        buf);
+    TEST_ASSERT_NOT_NULL(strstr(buf, "\"script_run\":{\"value\":\"\",\"time\":5}"));
+    cJSON *j = cJSON_Parse(buf);
+    TEST_ASSERT_NOT_NULL(j);
+    cJSON *v = cJSON_GetObjectItem(cJSON_GetObjectItem(cJSON_GetObjectItem(j, "data"), "scripts"), "value");
+    TEST_ASSERT_EQUAL_STRING(list, v->valuestring);
+    cJSON *inner = cJSON_Parse(v->valuestring); /* the panel parses the value again */
+    TEST_ASSERT_EQUAL(2, cJSON_GetArraySize(inner));
+    TEST_ASSERT_EQUAL_STRING("docker-up", cJSON_GetArrayItem(cJSON_GetArrayItem(inner, 1), 0)->valuestring);
+    cJSON_Delete(inner);
+    cJSON_Delete(j);
+    /* empty list */
+    tyl_prop_t e = {DP_SCRIPTS, 0, "[]"};
+    TEST_ASSERT_TRUE(tyl_build_report(&e, 1, "m", 5, buf, sizeof(buf)) > 0);
+    TEST_ASSERT_NOT_NULL(strstr(buf, "\"scripts\":{\"value\":\"[]\""));
+    /* longer than the DP maximum: refused */
+    char big[DPM_SCRIPTS_MAX + 2];
+    memset(big, 'x', sizeof(big) - 1);
+    big[sizeof(big) - 1] = 0;
+    tyl_prop_t b = {DP_SCRIPTS, 0, big};
+    TEST_ASSERT_EQUAL(-1, tyl_build_report(&b, 1, "m", 5, buf, sizeof(buf)));
+    tyl_prop_t r = {DP_SCRIPT_RUN, 0, "abcdefghijklm"};
+    TEST_ASSERT_EQUAL(-1, tyl_build_report(&r, 1, "m", 5, buf, sizeof(buf)));
+}
+
+static void test_parse_set_strings(void)
+{
+    tyl_set_t o;
+    TEST_ASSERT_EQUAL(0, parse("{\"msgId\":\"m\",\"data\":{\"script_run\":\"backup\",\"power_on\":true}}", &o));
+    TEST_ASSERT_EQUAL(2, o.nwrites);
+    TEST_ASSERT_EQUAL(0, o.nrejected);
+    TEST_ASSERT_EQUAL(DP_SCRIPT_RUN, o.w[0].id);
+    TEST_ASSERT_EQUAL_STRING("backup", o.w[0].s);
+    TEST_ASSERT_EQUAL(DP_POWER_ON, o.w[1].id);
+    TEST_ASSERT_EQUAL_STRING("", o.w[1].s);
+    TEST_ASSERT_EQUAL(0, parse("{\"msgId\":\"m\",\"data\":{\"script_run\":\"abcdefghijkl\"}}", &o)); /* 12 */
+    TEST_ASSERT_EQUAL(1, o.nwrites);
+    TEST_ASSERT_EQUAL_STRING("abcdefghijkl", o.w[0].s);
+    TEST_ASSERT_EQUAL(0, parse("{\"msgId\":\"m\",\"data\":{\"script_run\":\"\"}}", &o)); /* reset */
+    TEST_ASSERT_EQUAL(1, o.nwrites);
+    TEST_ASSERT_EQUAL_STRING("", o.w[0].s);
+    struct {
+        const char *json;
+        tyl_wres_t why;
+    } bad[] = {
+        {"{\"msgId\":\"m\",\"data\":{\"script_run\":\"abcdefghijklm\"}}", TYL_W_OUT_OF_RANGE}, /* 13 */
+        {"{\"msgId\":\"m\",\"data\":{\"script_run\":\"Backup\"}}", TYL_W_OUT_OF_RANGE},
+        {"{\"msgId\":\"m\",\"data\":{\"script_run\":\"a b\"}}", TYL_W_OUT_OF_RANGE},
+        {"{\"msgId\":\"m\",\"data\":{\"script_run\":\"a\\\"b\"}}", TYL_W_OUT_OF_RANGE},
+        {"{\"msgId\":\"m\",\"data\":{\"script_run\":\"\xc3\xb1\"}}", TYL_W_OUT_OF_RANGE},
+        {"{\"msgId\":\"m\",\"data\":{\"script_run\":1}}", TYL_W_BAD_TYPE},
+        {"{\"msgId\":\"m\",\"data\":{\"script_run\":null}}", TYL_W_BAD_TYPE},
+        {"{\"msgId\":\"m\",\"data\":{\"script_run\":[\"backup\"]}}", TYL_W_BAD_TYPE},
+        {"{\"msgId\":\"m\",\"data\":{\"scripts\":\"[]\"}}", TYL_W_READ_ONLY},
+        {"{\"msgId\":\"m\",\"data\":{\"pc_hostname\":\"x\"}}", TYL_W_READ_ONLY},
+    };
+    for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+        TEST_ASSERT_EQUAL_MESSAGE(0, parse(bad[i].json, &o), bad[i].json);
+        TEST_ASSERT_EQUAL_MESSAGE(0, o.nwrites, bad[i].json);
+        TEST_ASSERT_EQUAL_MESSAGE(1, o.nrejected, bad[i].json);
+        TEST_ASSERT_EQUAL_MESSAGE(bad[i].why, o.first_reject, bad[i].json);
+    }
 }
 
 static void test_build_response_and_model_get(void)
@@ -176,8 +270,6 @@ static void test_build_response_and_model_get(void)
     TEST_ASSERT_TRUE(tyl_build_model_get("q1", 7, buf, sizeof(buf)) > 0);
     TEST_ASSERT_EQUAL_STRING("{\"msgId\":\"q1\",\"time\":7,\"data\":{\"format\":\"complex\"}}", buf);
 }
-
-static int parse(const char *s, tyl_set_t *o) { return tyl_parse_set(s, strlen(s), o); }
 
 static void test_parse_set_single_and_multiple(void)
 {
@@ -336,6 +428,8 @@ void run_tylink_tests(void)
     RUN_TEST(test_enum_names_match_core);
     RUN_TEST(test_build_report);
     RUN_TEST(test_report_all_fits);
+    RUN_TEST(test_report_scripts_escaping);
+    RUN_TEST(test_parse_set_strings);
     RUN_TEST(test_build_response_and_model_get);
     RUN_TEST(test_parse_set_single_and_multiple);
     RUN_TEST(test_parse_set_rejections);

@@ -159,7 +159,10 @@ static bool put_value(wbuf_t *w, const tyl_prop_t *p)
         put_str(w, name);
         break;
     }
-    case DPT_STR: put_str(w, p->s ? p->s : ""); break;
+    case DPT_STR:
+        if (p->s && strlen(p->s) > (size_t)d->max) return false;
+        put_str(w, p->s ? p->s : "");
+        break;
     default: return false;
     }
     return true;
@@ -244,7 +247,7 @@ static bool integral(const cJSON *v, int32_t min, int32_t max, int32_t *out, tyl
     return true;
 }
 
-static tyl_wres_t decode(const cJSON *item, uint8_t *id, int32_t *val)
+static tyl_wres_t decode(const cJSON *item, tyl_write_t *out)
 {
     const dpm_desc_t *d = dpm_desc_by_code(item->string);
     if (!d) return TYL_W_UNKNOWN_CODE;
@@ -265,12 +268,20 @@ static tyl_wres_t decode(const cJSON *item, uint8_t *id, int32_t *val)
         v = dpm_enum_parse(d->id, item->valuestring);
         if (v < 0) return TYL_W_OUT_OF_RANGE;
         break;
-    default: return TYL_W_BAD_TYPE; /* no writable string DP */
+    case DPT_STR:
+        if (!cJSON_IsString(item) || !item->valuestring) return TYL_W_BAD_TYPE;
+        if (dpm_decode_write_str(d->id, item->valuestring) != 0) return TYL_W_OUT_OF_RANGE;
+        out->id = d->id;
+        out->v = 0;
+        snprintf(out->s, sizeof(out->s), "%s", item->valuestring); /* fits: checked above */
+        return TYL_W_OK;
+    default: return TYL_W_BAD_TYPE;
     }
     int32_t norm;
     if (dpm_decode_write(d->id, d->type, v, &norm) != 0) return TYL_W_OUT_OF_RANGE;
-    *id = d->id;
-    *val = norm;
+    out->id = d->id;
+    out->v = norm;
+    out->s[0] = 0;
     return TYL_W_OK;
 }
 
@@ -287,13 +298,10 @@ int tyl_parse_set(const char *json, size_t len, tyl_set_t *out)
         const cJSON *it;
         cJSON_ArrayForEach(it, data)
         {
-            uint8_t id = 0;
-            int32_t v = 0;
-            tyl_wres_t r = out->nwrites >= TYL_MAX_WRITES ? TYL_W_TOO_MANY : decode(it, &id, &v);
+            tyl_write_t w = {0};
+            tyl_wres_t r = out->nwrites >= TYL_MAX_WRITES ? TYL_W_TOO_MANY : decode(it, &w);
             if (r == TYL_W_OK) {
-                out->w[out->nwrites].id = id;
-                out->w[out->nwrites].v = v;
-                out->nwrites++;
+                out->w[out->nwrites++] = w;
             } else {
                 if (!out->nrejected++) {
                     out->first_reject = r;
