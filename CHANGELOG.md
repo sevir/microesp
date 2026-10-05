@@ -2,6 +2,17 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [SemVer](https://semver.org/). Firmware and agent share the version number (tag `vX.Y.Z`, which must match `CONFIG_PROJECT_VERSION` in `firmware/app_default.config`).
 
+## 0.3.0 - 2026-10-05
+
+### Added
+
+- **Panel: scheduling.** New *Schedule* section to power on, shut down or restart the PC "in X h Y min" (one-shot) or "at a time" on chosen weekdays (none = once, all = every day). They are Tuya cloud timers (`addTimer`, one category per command, always writing `true`), so the dongle needs no timer support and a scheduled shut down or restart still runs the cancelable countdown. Scheduled timers are listed soonest first and can be removed. Tuya's generic timer page (`openTimerPage`) does not open for this TuyaLink product, so the panel builds its own.
+
+### Changed
+
+- **Panel: power commands always available.** The BIOS enumerates the dongle even with the PC off, so the detected `pc_state` is only a hint: power on, shut down and restart are always shown and enabled. Shut down and restart still ask for confirmation and run the cancelable countdown; with the agent offline the panel only warns that the dongle will reject them.
+- **Panel: no `hid_not_armed` banner.** It is informational (as for the LED); a failed wake is still reported as `wake_failed`.
+
 ## 0.2.0 - 2026-10-05
 
 ### Changed
