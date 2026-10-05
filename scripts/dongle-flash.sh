@@ -7,7 +7,7 @@
 # Stops microesp-agent while flashing and starts it again at the end (sudo).
 # Build first with: cd firmware && ./build.sh
 set -euo pipefail
-# shellcheck source=lib/dongle-common.sh
+# shellcheck source=/dev/null
 source "$(dirname "$0")/lib/dongle-common.sh"
 
 MODE=--app

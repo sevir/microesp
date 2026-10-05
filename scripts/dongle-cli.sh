@@ -8,7 +8,7 @@
 # Stops microesp-agent while the port is in use and starts it again at the end (sudo).
 # Release builds only accept read-only commands (!status !dp !log !version ...).
 set -euo pipefail
-# shellcheck source=lib/dongle-common.sh
+# shellcheck source=/dev/null
 source "$(dirname "$0")/lib/dongle-common.sh"
 
 [ $# -gt 0 ] || set -- '!status'

@@ -2,6 +2,7 @@
 # shellcheck shell=bash
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck disable=SC2034 # used by the scripts that source this file
 FW="$ROOT/firmware"
 AGENT_UNIT=microesp-agent.service
 AGENT_WAS_ACTIVE=0
@@ -37,8 +38,8 @@ agent_restore() {
 
 # wait_cdc waits until the dongle's CDC port is back after a reset.
 wait_cdc() {
-	local i
-	for i in $(seq 1 60); do
+	local _
+	for _ in $(seq 1 60); do
 		compgen -G '/dev/serial/by-id/usb-MicroESP_MicroESP_MESP-*-if01' >/dev/null && return 0
 		sleep 0.5
 	done

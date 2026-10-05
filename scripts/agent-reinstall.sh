@@ -7,7 +7,7 @@
 # install.sh keeps /etc/microesp (agent.toml, key) and the scripts runner, and
 # restarts microesp-agent.service (sudo).
 set -euo pipefail
-# shellcheck source=lib/dongle-common.sh
+# shellcheck source=/dev/null
 source "$(dirname "$0")/lib/dongle-common.sh"
 
 VER=$(sed -n 's/^CONFIG_PROJECT_VERSION="\(.*\)"/\1/p' "$FW/app_default.config")
