@@ -46,7 +46,7 @@ Before each case: the PC in the indicated state and the dongle connected to the 
 | E2E-13 Power-on from S5 (HID) | BIOS *Smart Power On* enabled and dongle in the *smart power on* connector; `systemctl poweroff`; `wake_method=hid`; app → Power on | The dongle sends Alt+P and the PC boots. If not: `wake_failed` after 120 s; note whether the port supplies 5 V in S5 and `hid_proto` in `!status` | | |
 | E2E-14 Power-on from S5 (WOL) | `wake_method=wol`; shut down; app → Power on | Boots via WOL | | |
 | E2E-15 Power-on from S5 (`hid_then_wol`) | Default method; shut down; app → Power on | Alt+P and WOL are sent at the same time (WOL repeated after 20 s); boots | | |
-| E2E-16 Power on with the PC already on | PC `on`; app → Power on | The command is sent anyway (Alt+P reaches the foreground application); with the agent connected it is accepted immediately; the PC is not affected | | |
+| E2E-16 Power on with the PC already on | PC `on`; app → Power on | The command is sent anyway (Alt+P reaches the foreground application); with the agent connected it is accepted immediately; the PC is not affected | Pass (2026-10-05, fw 0.4.0, agent v0.4.0) | Alt+P seen by a key-echo terminal in the foreground; WOL `Wake-on: g` on `enp128s31f6` |
 | E2E-17 Power-on failure | Disable WOL on the NIC and shut down with the port unpowered; app → Power on | `wake_failed` and bit 1 of `fault` after 120 s; cleared on the next successful power-on | | |
 
 ## 3. Shutdown and reboot

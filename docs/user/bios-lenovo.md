@@ -7,7 +7,7 @@ The dongle powers the PC on in two ways:
 1. **USB keyboard (HID)**. In suspend (S3) the standard USB *remote wakeup* is enough. In hibernation (S4) and power-off (S5) the BIOS has to keep the USB port powered and monitored.
 2. **Wake-on-LAN (WOL)**: a magic packet over the local network to the MACs that the agent reports to the dongle. The default method `hid_then_wol` sends it **always together with the HID** (and repeats it after 20 s if the PC has not booted).
 
-> **Validation status.** This guide is **not yet validated on the machine**. The MESP-US-0002 spike (S3/S4/S5 × port × BIOS matrix) is still pending and `docs/analysis/spike-wake.md` does not exist. The menu names below are the usual ones in Lenovo ThinkStation/ThinkCentre BIOSes (sources at the end), but they **have not been checked on the P3 Ultra SFF G2**. When you run the test, write down the real name of each option in the "Actual name on this machine" column and the result in [`docs/qa/e2e-v1.md`](../qa/e2e-v1.md).
+> **Validation status.** This guide is **not yet validated on the machine**. The MESP-US-0002 spike (S3/S4/S5 × port × BIOS matrix) is in progress: first S5 evidence in [`docs/analysis/spike-wake.md`](../analysis/spike-wake.md). The menu names below are the usual ones in Lenovo ThinkStation/ThinkCentre BIOSes (sources at the end), but they **have not been checked on the P3 Ultra SFF G2**. When you run the test, write down the real name of each option in the "Actual name on this machine" column and the result in [`docs/qa/e2e-v1.md`](../qa/e2e-v1.md).
 
 ## 1. Enter the BIOS
 
