@@ -24,7 +24,9 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version-file: agent/go.mod
+          # go.mod keeps 1.23 as the minimum; the CI uses a current Go so
+          # staticcheck (needs >= 1.26) does not download a toolchain at run time.
+          go-version: '1.26.x'
           cache-dependency-path: agent/go.sum
       - name: gofmt
         run: |
