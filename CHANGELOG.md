@@ -6,6 +6,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versio
 
 ### Fixed
 
+- **Firmware: properties rejected by the cloud went unnoticed.** Reports now ask for `property/report_response` (`"sys":{"ack":1}`); before, the cloud never answered, so `cloud_report_errors` stayed at 0 while it dropped `scripts`/`script_run` (code 2006, not in the thing model). A non-zero code is logged with the start of the payload, and `!status` adds `report_resp` and `last_code`.
 - **Panel: Restart button out of view.** The Shut down / Restart row used `width: 100%` buttons, but the MiniApp button default style won and pushed Restart past the right edge of the card. Both now take equal halves (`flex: 1 1 0`, `min-width: 0`).
 
 ## 0.4.1 - 2026-10-05

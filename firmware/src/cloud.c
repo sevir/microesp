@@ -377,7 +377,13 @@ void cloud_on_rx(const app_ev_t *ev)
         if (p && tyl_parse_code(p, ev->len, &code) == 0) s_st.last_report_code = code;
         if (code != 0) {
             s_st.report_resp_err++;
-            PR_WARN("cloud: property/report rejected by the cloud (code %d)", code);
+            /* 2003: property not defined, 2006: some properties rejected (the others
+             * were stored); the payload may name them. It carries no secrets. */
+            PR_WARN("cloud: property/report rejected by the cloud (code %d%s): %.*s", code,
+                    code == 2003   ? ", property not defined"
+                    : code == 2006 ? ", partial failure: a property is missing from the thing model"
+                                   : "",
+                    p ? (int)(ev->len > 200 ? 200 : ev->len) : 0, p ? p : "");
         }
         break;
     }
@@ -448,10 +454,11 @@ void cloud_print_status(void)
                     h.last_mqtt_error, (unsigned long)h.next_attempt_s);
     if (s_st.last_report_ms)
         mhal_cdc_printf("tylink: reports ok=%lu failed=%lu last=%lus ago dp_reports=%lu cloud_report_errors=%lu "
-                        "rx_cmds=%lu rx_rejected=%lu rx_malformed=%lu actions=%lu model_resp=%lu\r\n",
+                        "report_resp=%lu last_code=%d rx_cmds=%lu rx_rejected=%lu rx_malformed=%lu actions=%lu model_resp=%lu\r\n",
                         (unsigned long)s_st.reports_ok, (unsigned long)s_st.reports_failed,
                         (unsigned long)((now - s_st.last_report_ms) / 1000), (unsigned long)g_app.dpm.total_reports,
-                        (unsigned long)s_st.report_resp_err, (unsigned long)s_st.rx_cmds,
+                        (unsigned long)s_st.report_resp_err, (unsigned long)s_st.report_resp,
+                        s_st.last_report_code, (unsigned long)s_st.rx_cmds,
                         (unsigned long)s_st.rx_rejected, (unsigned long)s_st.rx_malformed,
                         (unsigned long)s_st.actions, (unsigned long)s_st.model_resp);
     else

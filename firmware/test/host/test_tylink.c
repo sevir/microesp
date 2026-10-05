@@ -121,6 +121,8 @@ static void test_build_report(void)
     TEST_ASSERT_NOT_NULL_MESSAGE(j, buf);
     TEST_ASSERT_EQUAL_STRING("m1", cJSON_GetObjectItem(j, "msgId")->valuestring);
     TEST_ASSERT_TRUE(cJSON_GetObjectItem(j, "time")->valuedouble == 1759536000123.0);
+    /* ask for property/report_response, the only way to see rejected properties */
+    TEST_ASSERT_EQUAL(1, cJSON_GetObjectItem(cJSON_GetObjectItem(j, "sys"), "ack")->valueint);
     cJSON *d = cJSON_GetObjectItem(j, "data");
     TEST_ASSERT_EQUAL(8, cJSON_GetArraySize(d));
 #define VAL(code) cJSON_GetObjectItem(cJSON_GetObjectItem(d, code), "value")

@@ -174,7 +174,9 @@ int tyl_build_report(const tyl_prop_t *p, int n, const char *msgid, int64_t time
     if (!p || n <= 0 || !msgid) return -1;
     put(&w, "{\"msgId\":");
     put_str(&w, msgid);
-    put(&w, ",\"time\":%lld,\"data\":{", (long long)time_ms);
+    /* sys.ack=1: without it the cloud never sends property/report_response, so
+     * rejected properties (e.g. 2006 "not definition") would go unnoticed */
+    put(&w, ",\"time\":%lld,\"sys\":{\"ack\":1},\"data\":{", (long long)time_ms);
     for (int i = 0; i < n; i++) {
         const dpm_desc_t *d = dpm_desc(p[i].id);
         if (!d) return finish(&(wbuf_t){out, cap, 0, true});
