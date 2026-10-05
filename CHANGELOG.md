@@ -2,6 +2,12 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [SemVer](https://semver.org/). Firmware and agent share the version number (tag `vX.Y.Z`, which must match `CONFIG_PROJECT_VERSION` in `firmware/app_default.config`).
 
+## 0.4.1 - 2026-10-05
+
+### Fixed
+
+- **Firmware: PC reported on while it is off after a remote shutdown.** On the Lenovo ThinkStation P3 Ultra the BIOS/EC re-enumerates the dongle in S5 on its powered port and keeps the bus active, so `pc_state` went `booting` → `on_no_agent` (with the `agent_lost` fault) for hours. An acked shutdown now holds `pc_state=off` until an operating system is back (agent session `ready` or CDC port opened by the host); a bus mount or resume no longer clears it. A power-on in progress still shows `booting` and falls back to `off` if it fails.
+
 ## 0.4.0 - 2026-10-05
 
 ### Added
