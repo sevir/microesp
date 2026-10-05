@@ -216,18 +216,21 @@ func TestRemoteScriptCommands(t *testing.T) {
 		t.Errorf("runner asked after the ack: %v", fr.acks)
 	}
 	fr.mu.Unlock()
-	for id, c := range map[uint32]struct {
+	// A slice, not a map: ids must go out in increasing order or the agent
+	// rightly answers replay.
+	for _, c := range []struct {
+		id   uint32
 		err  error
 		want string
 	}{
-		3: {scripts.ErrUnknown, proto.AckUnknownAction},
-		4: {scripts.ErrBusy, proto.AckExecFailed},
-		5: {errors.New("dial unix /run/microesp/scripts.sock: connect: no such file"), proto.AckExecFailed},
+		{3, scripts.ErrUnknown, proto.AckUnknownAction},
+		{4, scripts.ErrBusy, proto.AckExecFailed},
+		{5, errors.New("dial unix /run/microesp/scripts.sock: connect: no such file"), proto.AckExecFailed},
 	} {
 		fr.set(c.err)
-		_ = d.Send(d.SignedCmd(id, proto.ScriptAction("backup")))
-		if a := ackFor(id); a.OK || a.Err != c.want {
-			t.Fatalf("id %d ack %+v, want %s", id, a, c.want)
+		_ = d.Send(d.SignedCmd(c.id, proto.ScriptAction("backup")))
+		if a := ackFor(c.id); a.OK || a.Err != c.want {
+			t.Fatalf("id %d ack %+v, want %s", c.id, a, c.want)
 		}
 	}
 	if n := len(fr.Calls()); n != 4 || h.plug.count() != 1 {
