@@ -74,7 +74,8 @@ void usbc_on_event(const app_ev_t *ev)
         break;
     case MHAL_USB_MOUNT:
     case MHAL_USB_RESUME:
-        g_app.shutdown_expected = false; /* the PC is back */
+        /* not "the PC is back": in S5 the BIOS/EC re-enumerates a powered port, so
+         * shutdown_expected is only cleared by the OS (agent ready / CDC port opened) */
         g_app.usb_up_seq++;
         break;
     default:

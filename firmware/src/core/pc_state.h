@@ -7,8 +7,10 @@
  * Raw classification (first match wins):
  *   agent online                                   -> ON
  *   wake in progress and not (mounted & !suspended) -> BOOTING
- *   mounted & suspended & shutdown expected        -> OFF   (a shutdown cmd was acked: with
- *                                                     "always-on USB" S5 only shows a suspend)
+ *   shutdown expected                              -> BOOTING if a wake is in progress, else OFF
+ *                                                     (a shutdown cmd was acked: with a powered
+ *                                                     port S5 shows a suspend or a re-enumerated,
+ *                                                     active bus)
  *   mounted & suspended                            -> SLEEP
  *   !mounted                                       -> OFF
  *   mounted & !suspended & agent seen since the last up-edge  -> ON_NO_AGENT (agent lost)
@@ -39,7 +41,8 @@ typedef enum { PCS_OFF = 0, PCS_SLEEP, PCS_BOOTING, PCS_ON_NO_AGENT, PCS_ON, PCS
 
 typedef struct {
     bool mounted, suspended, agent_online, wake_in_progress;
-    bool shutdown_expected; /* set after an acked shutdown cmd, cleared on the next up-edge */
+    bool shutdown_expected; /* set after an acked shutdown cmd, cleared when an OS is back
+                             * (agent session ready or CDC port opened by the host) */
 } pcs_inputs_t;
 
 typedef struct {

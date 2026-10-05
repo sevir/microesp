@@ -33,7 +33,10 @@ pcs_t pcs_raw(const pcs_sm_t *sm, const pcs_inputs_t *in, uint32_t now_ms)
     bool up = in->mounted && !in->suspended;
     if (in->agent_online) return PCS_ON;
     if (in->wake_in_progress && !up) return PCS_BOOTING;
-    if (in->mounted && in->suspended) return in->shutdown_expected ? PCS_OFF : PCS_SLEEP;
+    /* An acked shutdown holds until an OS is back (agent ready / CDC port opened): in S5
+     * a powered port is re-enumerated by the BIOS/EC and the bus can stay up for hours. */
+    if (in->shutdown_expected) return in->wake_in_progress ? PCS_BOOTING : PCS_OFF;
+    if (in->mounted && in->suspended) return PCS_SLEEP;
     if (!in->mounted) return PCS_OFF;
     if (sm->agent_since_up) return PCS_ON_NO_AGENT;
     if (ELAPSED(now_ms, sm->up_edge_ms) < PCS_BOOT_GRACE_MS) return PCS_BOOTING;
@@ -61,7 +64,7 @@ bool pcs_update(pcs_sm_t *sm, const pcs_inputs_t *in, uint32_t now_ms)
     }
     /* agent_lost: the agent disappeared while the PC is still up */
     bool is_up = in->mounted && !in->suspended;
-    if (!is_up) sm->agent_lost = false;
+    if (!is_up || in->shutdown_expected) sm->agent_lost = false;
     else if (sm->have_prev && sm->prev.agent_online && !in->agent_online) sm->agent_lost = true;
     sm->prev = *in;
     sm->have_prev = true;

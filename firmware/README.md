@@ -246,7 +246,8 @@ Four signals are merged: the USB bus state (mounted/suspended), whether the agen
 |---|---|---|
 | agent online | `on` | 0 s |
 | power-on in progress and bus not active | `booting` | 0 s |
-| mounted + suspended + shutdown confirmed | `off` (S5 with "Always On USB" only looks like a suspend) | 3 s |
+| shutdown confirmed, power-on in progress | `booting` | 0 s |
+| shutdown confirmed | `off` (S5 with a powered port looks like a suspend or, on the Lenovo, like an active bus re-enumerated by the BIOS/EC) | 3 s |
 | mounted + suspended | `sleep` | 3 s |
 | not mounted | `off` | 3 s |
 | bus active and the agent was online since the last rising edge | `on_no_agent` (plus `agent_lost` fault) | 2 s |
@@ -255,7 +256,7 @@ Four signals are merged: the USB bus state (mounted/suspended), whether the agen
 
 It starts at `unknown` and sets the first state after 3 s.
 
-`shutdown_expected` (shutdown confirmed with `ack`) is cleared when the bus mounts/resumes and also when an agent authenticates again: if the agent comes back, the shutdown did not actually happen and a later suspend is `sleep`, not `off`.
+`shutdown_expected` (shutdown confirmed with `ack`) is cleared only when an operating system is proven back: an agent session gets `ready`, or the host opens the CDC port (a BIOS/EC host never does). A bus mount or resume does not clear it: in S5 the Lenovo re-enumerates the dongle on its powered port and keeps the bus active for hours, which used to show `booting` → `on_no_agent` with the PC off ([`docs/analysis/spike-wake.md`](../docs/analysis/spike-wake.md)). While it is set no `agent_lost` fault is raised. Side effect: after a remote shutdown, a boot with the power button shows `off` until the agent opens the port.
 
 `hid_not_armed` is evaluated on each suspend: it is set if the host suspends the bus without arming remote wakeup. It is the last known value.
 

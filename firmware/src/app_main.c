@@ -72,7 +72,8 @@ static void dispatch(app_ev_t *ev, uint32_t now)
     case EV_OTA: ota_on_event(ev); break;
     case EV_CDC_DTR:
         PR_NOTICE("cdc: port %s by the host", ev->a ? "opened" : "closed");
-        if (!ev->a) agent_link_on_port_closed();
+        if (ev->a) g_app.shutdown_expected = false; /* only an OS opens the port, never the BIOS/EC */
+        else agent_link_on_port_closed();
         break;
     default: break;
     }

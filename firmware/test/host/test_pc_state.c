@@ -115,6 +115,44 @@ static void test_shutdown_with_always_on_usb(void)
     TEST_ASSERT_EQUAL(PCS_SLEEP, run(in(true, true, false, false), 3200));
 }
 
+static void test_shutdown_with_bios_reenumeration(void)
+{
+    /* Lenovo S5 with a powered port: after the acked shutdown the BIOS/EC suspends the
+     * bus, mounts it again and keeps it active for hours. It stays OFF, without
+     * agent_lost, instead of BOOTING -> ON_NO_AGENT. */
+    start();
+    run(in(true, false, true, false), 4000);
+    pcs_inputs_t i = in(true, true, false, false);
+    i.shutdown_expected = true;
+    TEST_ASSERT_EQUAL(PCS_OFF, run(i, 3200));
+    i = in(true, false, false, false);
+    i.shutdown_expected = true;
+    TEST_ASSERT_EQUAL(PCS_OFF, run(i, PCS_BOOT_GRACE_MS + 60000));
+    TEST_ASSERT_FALSE(S.agent_lost);
+    /* power-on from the app: BOOTING while the wake runs, even with the bus active */
+    i.wake_in_progress = true;
+    TEST_ASSERT_EQUAL(PCS_BOOTING, run(i, 100));
+    /* the wake gives up: back to OFF */
+    i.wake_in_progress = false;
+    TEST_ASSERT_EQUAL(PCS_OFF, run(i, 3100));
+    /* the OS is back (flag cleared by the app): normal rules, then the agent */
+    TEST_ASSERT_EQUAL(PCS_BOOTING, run(in(true, false, false, false), 100));
+    TEST_ASSERT_EQUAL(PCS_ON, run(in(true, false, true, false), 100));
+}
+
+static void test_shutdown_expected_while_agent_online(void)
+{
+    /* the agent stays online right after the ack (or the poweroff failed): ON wins */
+    start();
+    pcs_inputs_t i = in(true, false, true, false);
+    i.shutdown_expected = true;
+    TEST_ASSERT_EQUAL(PCS_ON, run(i, 4000));
+    /* it drops with the flag set: OFF, not an agent_lost fault */
+    i.agent_online = false;
+    TEST_ASSERT_EQUAL(PCS_OFF, run(i, 3100));
+    TEST_ASSERT_FALSE(S.agent_lost);
+}
+
 static void test_wake_in_progress(void)
 {
     start();
@@ -172,6 +210,8 @@ void run_pc_state_tests(void)
     RUN_TEST(test_suspend_resume);
     RUN_TEST(test_shutdown);
     RUN_TEST(test_shutdown_with_always_on_usb);
+    RUN_TEST(test_shutdown_with_bios_reenumeration);
+    RUN_TEST(test_shutdown_expected_while_agent_online);
     RUN_TEST(test_wake_in_progress);
     RUN_TEST(test_no_flapping);
     RUN_TEST(test_names);
