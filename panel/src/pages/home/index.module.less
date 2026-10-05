@@ -186,6 +186,14 @@
 .actionRow {
   display: flex;
   gap: 10px;
+
+  // Equal halves. The MiniApp button's default style (fixed width, no shrink) beat
+  // `width: 100%` and pushed the second button out of the card.
+  .btn {
+    flex: 1 1 0;
+    width: 0;
+    min-width: 0;
+  }
 }
 
 .hint {

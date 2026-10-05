@@ -2,6 +2,12 @@
 
 Format based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/). Versioning follows [SemVer](https://semver.org/). Firmware and agent share the version number (tag `vX.Y.Z`, which must match `CONFIG_PROJECT_VERSION` in `firmware/app_default.config`).
 
+## Unreleased
+
+### Fixed
+
+- **Panel: Restart button out of view.** The Shut down / Restart row used `width: 100%` buttons, but the MiniApp button default style won and pushed Restart past the right edge of the card. Both now take equal halves (`flex: 1 1 0`, `min-width: 0`).
+
 ## 0.4.1 - 2026-10-05
 
 ### Fixed
