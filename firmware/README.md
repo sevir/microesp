@@ -182,7 +182,7 @@ In release, a development command replies `err: <cmd> needs a development build`
 
 The TuyaOpen and app log goes out through UART0 and is copied to the buffer that `!log` dumps; so are the ESP-IDF logs (Wi-Fi, `esp-mqtt`, TLS). In release the app level is NOTICE and in development DEBUG (ESP-IDF stays at INFO). In both variants, `src/core/log_redact.c` replaces with `[redacted: sensitive log line]` any line containing a registered secret (TuyaLink deviceSecret, Wi-Fi password, MQTT password of the current attempt, pairing code) or a sensitive word (`authkey`, `localkey`, `seckey`, `secret`, `regist_key`, `token`, `passwd`, `password`, `psk`...). The filter is also applied to ESP-IDF lines (`mhal_log_set_filter`), in the buffer and on UART0; for those lines only the first 255 bytes are examined. The agent key is binary and is never printed.
 
-Tool: `tools/mesp_cdc.py '!status' '!dp'` (with `sg dialout` and the IDF environment's Python, which ships pyserial).
+Tool: `tools/mesp_cdc.py '!status' '!dp'` (with `sg dialout` and the IDF environment's Python, which ships pyserial). On a machine running the agent, `scripts/dongle-cli.sh '!status' '!dp'` (repo root) stops the agent, runs the commands and starts it again; `scripts/dongle-flash.sh` does the same around `tools/flash.sh --app`.
 
 ## Button (GPIO0)
 

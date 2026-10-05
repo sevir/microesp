@@ -91,6 +91,8 @@ Ports (stable by serial number):
 
 ## 5. Flashing
 
+On the live machine (agent installed), prefer the wrappers in `scripts/` (`dongle-flash.sh`, `dongle-cli.sh`, `agent-reinstall.sh`): they stop and restart the agent and handle `dialout`. See [`operations/live-scripts.md`](operations/live-scripts.md).
+
 ### 5.1 Firmware without TinyUSB (USB-Serial/JTAG active)
 
 ```bash
