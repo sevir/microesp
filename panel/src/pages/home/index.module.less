@@ -408,3 +408,82 @@
   font-size: 15px;
   font-weight: 500;
 }
+
+// Schedule
+
+.rowColumnBody {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.timeRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.timeValue {
+  .mono();
+  min-width: 96px;
+  height: 48px;
+  line-height: 48px;
+  border-radius: 13px;
+  background: @ground;
+  text-align: center;
+  font-size: 22px;
+  font-weight: 500;
+}
+
+.days {
+  display: flex;
+  gap: 6px;
+}
+
+.dayBtn {
+  .button-reset();
+  flex: 1;
+  height: 40px;
+  line-height: 40px;
+  border-radius: 10px;
+  background: @ground;
+  color: @muted;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.dayOn {
+  background: @accent;
+  color: #fff;
+}
+
+.delay {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.delay .stepBtn {
+  width: 36px;
+}
+
+.delay .stepValue {
+  min-width: 56px;
+}
+
+.btnOff {
+  opacity: 0.4;
+}
+
+.removeBtn {
+  .button-reset();
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: @ground;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}

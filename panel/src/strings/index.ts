@@ -47,6 +47,28 @@ interface Strings {
   confirmRebootTitle: string;
   confirmText: (kind: 'off' | 'reboot', countdown: number, agentOnline: boolean) => string;
   sendFailed: string;
+  schedule: string;
+  scheduleNote: string;
+  scheduleAction: string;
+  when: string;
+  whenIn: string;
+  whenAt: string;
+  runAt: (clock: string) => string;
+  atTime: string;
+  days: string;
+  daysHelp: string;
+  countdownNote: string;
+  scheduleBtn: string;
+  scheduled: (clock: string) => string;
+  scheduleFailed: string;
+  upcoming: string;
+  nothingScheduled: string;
+  removeFailed: string;
+  once: string;
+  everyDay: string;
+  weekdays: string[];
+  weekdayInitials: string[];
+  inTime: (t: string) => string;
   formatUptime: (seconds: number) => string;
   decimalSep: string;
 }
@@ -135,6 +157,28 @@ const es: Strings = {
     'Guarda antes tu trabajo abierto.' +
     (agentOnline ? '' : ' El agente del PC parece desconectado, así que el dongle puede rechazar la orden.'),
   sendFailed: 'No se pudo enviar la orden',
+  schedule: 'Programar',
+  scheduleNote: 'Lo ejecuta la nube de Tuya',
+  scheduleAction: 'Orden',
+  when: 'Cuándo',
+  whenIn: 'Dentro de',
+  whenAt: 'A una hora',
+  runAt: (c) => `Se ejecutará a las ${c}.`,
+  atTime: 'Hora',
+  days: 'Días',
+  daysHelp: 'Sin días marcados se ejecuta una sola vez.',
+  countdownNote: 'Apagar y reiniciar mantienen la cuenta atrás cancelable.',
+  scheduleBtn: 'Programar',
+  scheduled: (c) => `Programado a las ${c}`,
+  scheduleFailed: 'No se pudo programar',
+  upcoming: 'Programado',
+  nothingScheduled: 'Nada programado',
+  removeFailed: 'No se pudo quitar',
+  once: 'una vez',
+  everyDay: 'todos los días',
+  weekdays: ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb'],
+  weekdayInitials: ['D', 'L', 'M', 'X', 'J', 'V', 'S'],
+  inTime: (t) => `en ${t}`,
   formatUptime: (s) => {
     const { d, h, m } = splitUptime(s);
     if (d > 0) return `${d} d ${h} h`;
@@ -229,6 +273,28 @@ const en: Strings = {
     'Save your open work first.' +
     (agentOnline ? '' : ' The PC agent looks offline, so the dongle may reject the command.'),
   sendFailed: 'Could not send the command',
+  schedule: 'Schedule',
+  scheduleNote: 'Run by the Tuya cloud',
+  scheduleAction: 'Command',
+  when: 'When',
+  whenIn: 'In',
+  whenAt: 'At a time',
+  runAt: (c) => `It will run at ${c}.`,
+  atTime: 'Time',
+  days: 'Days',
+  daysHelp: 'With no day selected it runs once.',
+  countdownNote: 'Shut down and restart keep the cancelable countdown.',
+  scheduleBtn: 'Schedule',
+  scheduled: (c) => `Scheduled for ${c}`,
+  scheduleFailed: 'Could not schedule',
+  upcoming: 'Scheduled',
+  nothingScheduled: 'Nothing scheduled',
+  removeFailed: 'Could not remove',
+  once: 'once',
+  everyDay: 'every day',
+  weekdays: ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'],
+  weekdayInitials: ['S', 'M', 'T', 'W', 'T', 'F', 'S'],
+  inTime: (t) => `in ${t}`,
   formatUptime: (s) => {
     const { d, h, m } = splitUptime(s);
     if (d > 0) return `${d} d ${h} h`;

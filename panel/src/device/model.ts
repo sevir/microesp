@@ -221,3 +221,88 @@ export function splitUptime(seconds: number): { d: number; h: number; m: number 
     m: Math.floor((seconds % 3600) / 60),
   };
 }
+
+/* Cloud timers ------------------------------------------------------------ */
+
+/** Commands a cloud timer can send. Each one writes its push-button property to true. */
+export const SCHEDULE_ACTIONS = ['power_on', 'power_off', 'reboot'] as const;
+export type ScheduleAction = (typeof SCHEDULE_ACTIONS)[number];
+
+/**
+ * One timer category per action: the generic timer page then edits a single
+ * property, so a timer never writes two commands at once (or false, which
+ * would cancel a running countdown).
+ */
+export const TIMER_CATEGORY: Record<ScheduleAction, string> = {
+  power_on: 'mesp_power_on',
+  power_off: 'mesp_power_off',
+  reboot: 'mesp_reboot',
+};
+
+/** A one-shot timer only has a clock time, so it must run within the next 24 h. */
+export const DELAY_MAX_MIN = 23 * 60 + 59;
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : String(n);
+}
+
+/** Clock time ("HH:mm", local) of a timer that runs delayMin minutes after now. */
+export function timerClock(now: Date, delayMin: number): string {
+  const at = new Date(Math.round((now.getTime() + delayMin * 60000) / 60000) * 60000);
+  return `${pad2(at.getHours())}:${pad2(at.getMinutes())}`;
+}
+
+/** True when loops ("0000000", Sunday first) selects no weekday: the timer runs once. */
+export function isOnce(loops: string): boolean {
+  return !/1/.test(loops || '');
+}
+
+/** Weekday order of the day chips: Monday first, Sunday last. */
+export const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0] as const;
+
+/** Flips weekday d (0 = Sunday) in loops. */
+export function toggleDay(loops: string, d: number): string {
+  const days = (loops || '0000000').padEnd(7, '0').slice(0, 7).split('');
+  days[d] = days[d] === '1' ? '0' : '1';
+  return days.join('');
+}
+
+/** Weekdays (0 = Sunday) selected by loops. */
+export function loopDays(loops: string): number[] {
+  const days: number[] = [];
+  for (let d = 0; d < 7; d++) if ((loops || '')[d] === '1') days.push(d);
+  return days;
+}
+
+/** Minutes from now to the next run of a timer, or -1 if its time is not valid. */
+export function minutesUntil(now: Date, time: string, loops: string): number {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(time || '');
+  if (!m) return -1;
+  const at = Number(m[1]) * 60 + Number(m[2]);
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  const once = isOnce(loops);
+  for (let d = 0; d < 8; d++) {
+    const diff = d * 1440 + at - nowMin;
+    if (diff > 0 && (once || loops[(now.getDay() + d) % 7] === '1')) return diff;
+  }
+  return -1;
+}
+
+/** Action a timer runs, from its dps (keyed by abilityId or code, object or JSON). */
+export function timerAction(dps: unknown): ScheduleAction | null {
+  let v = dps;
+  if (typeof v === 'string') {
+    try {
+      v = JSON.parse(v);
+    } catch {
+      return null;
+    }
+  }
+  if (!v || typeof v !== 'object') return null;
+  const values = v as Record<string, unknown>;
+  for (const a of SCHEDULE_ACTIONS) {
+    const raw = values[String(ABILITY_IDS[a])] ?? values[a];
+    if (toBool(unwrap(raw)) === true) return a;
+  }
+  return null;
+}

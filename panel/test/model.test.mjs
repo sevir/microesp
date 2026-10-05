@@ -14,6 +14,12 @@ import {
   clampCountdown,
   errorFaults,
   formatTenths,
+  isOnce,
+  loopDays,
+  minutesUntil,
+  timerAction,
+  timerClock,
+  toggleDay,
   mergeCodes,
   mergeDps,
   pendingCommand,
@@ -90,4 +96,32 @@ test('formatting helpers', () => {
   assert.equal(formatTenths(184), '18,4');
   assert.equal(formatTenths(1000, '.'), '100.0');
   assert.equal(clampCountdown(65), 60);
+});
+
+test('cloud timer helpers', () => {
+  // Tuesday 2026-10-06 22:40:20 local time.
+  const now = new Date(2026, 9, 6, 22, 40, 20);
+  assert.equal(timerClock(now, 30), '23:10');
+  assert.equal(timerClock(now, 90), '00:10');
+  assert.equal(timerClock(new Date(2026, 9, 6, 22, 40, 40), 1), '22:42');
+
+  assert.equal(isOnce('0000000'), true);
+  assert.equal(isOnce('0100000'), false);
+  assert.deepEqual(loopDays('1000001'), [0, 6]);
+  assert.equal(toggleDay('0000000', 1), '0100000');
+  assert.equal(toggleDay('0100000', 1), '0000000');
+  assert.equal(toggleDay('', 0), '1000000');
+
+  assert.equal(minutesUntil(now, '23:10', '0000000'), 30);
+  assert.equal(minutesUntil(now, '08:00', '0000000'), 9 * 60 + 20);
+  assert.equal(minutesUntil(now, '22:40', '0000000'), 24 * 60);
+  // Next Monday 08:00 from Tuesday 22:40.
+  assert.equal(minutesUntil(now, '08:00', '0100000'), 5 * 1440 + 9 * 60 + 20);
+  assert.equal(minutesUntil(now, 'bad', '0000000'), -1);
+
+  assert.equal(timerAction({ 103: true }), 'power_off');
+  assert.equal(timerAction('{"104":true}'), 'reboot');
+  assert.equal(timerAction({ power_on: true }), 'power_on');
+  assert.equal(timerAction({ 103: false }), null);
+  assert.equal(timerAction('nope'), null);
 });

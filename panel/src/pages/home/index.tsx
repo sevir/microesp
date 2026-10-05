@@ -15,6 +15,7 @@ import {
   formatTenths,
   telemetryLive,
 } from '@/device/model';
+import Schedule from './Schedule';
 import styles from './index.module.less';
 
 const DOT: Record<string, string> = {
@@ -170,6 +171,8 @@ export default function Home() {
           ))}
         </View>
       </View>
+
+      <Schedule deviceId={dev.devId} />
 
       <View className={styles.section}>
         <Text className={`${styles.h2} ${styles.sectionPad}`}>{Strings.settings}</Text>
