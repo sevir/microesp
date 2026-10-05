@@ -178,6 +178,15 @@ export function activeFaults(mask: number): Fault[] {
   return FAULT_LABELS.filter((_, bit) => (mask & (1 << bit)) !== 0);
 }
 
+/**
+ * Faults worth a banner. hid_not_armed is informational: the host may leave
+ * remote wakeup disarmed while power on still works (as the LED does, it is not
+ * an error); a wake that really fails shows up as wake_failed.
+ */
+export function errorFaults(mask: number): Fault[] {
+  return activeFaults(mask).filter((f) => f !== 'hid_not_armed');
+}
+
 export type PendingCommand = 'off' | 'reboot';
 
 /** A shutdown or reboot is counting down while its property reads true. */
@@ -187,13 +196,9 @@ export function pendingCommand(s: MicroEspState): PendingCommand | null {
   return null;
 }
 
+/** Power on is the main action (rather than one more option) in these states. */
 export function canWake(s: MicroEspState): boolean {
   return s.pc_state === 'off' || s.pc_state === 'sleep' || s.pc_state === 'unknown';
-}
-
-/** Power off and reboot are executed by the PC agent, so they need it online. */
-export function canCommand(s: MicroEspState): boolean {
-  return s.pc_state === 'on' && s.agent_online;
 }
 
 export function telemetryLive(s: MicroEspState): boolean {

@@ -10,8 +10,9 @@ import {
   PC_STATES,
   WAKE_METHODS,
   activeFaults,
-  canCommand,
+  canWake,
   clampCountdown,
+  errorFaults,
   formatTenths,
   mergeCodes,
   mergeDps,
@@ -73,14 +74,16 @@ test('numbers are clamped to their declared range', () => {
 test('fault bitmap decodes bit i to label[i]', () => {
   assert.deepEqual(activeFaults(0), []);
   assert.deepEqual(activeFaults(0b1001), ['agent_lost', 'cloud_lost']);
+  assert.deepEqual(errorFaults(0b0100), []);
+  assert.deepEqual(errorFaults(0b0110), ['wake_failed']);
 });
 
-test('pending command and command availability', () => {
+test('pending command and main action', () => {
   assert.equal(pendingCommand({ ...DEFAULT_STATE, power_off: true }), 'off');
   assert.equal(pendingCommand({ ...DEFAULT_STATE, reboot: true }), 'reboot');
   assert.equal(pendingCommand(DEFAULT_STATE), null);
-  assert.equal(canCommand({ ...DEFAULT_STATE, pc_state: 'on', agent_online: true }), true);
-  assert.equal(canCommand({ ...DEFAULT_STATE, pc_state: 'on_no_agent' }), false);
+  assert.equal(canWake({ ...DEFAULT_STATE, pc_state: 'off' }), true);
+  assert.equal(canWake({ ...DEFAULT_STATE, pc_state: 'on' }), false);
 });
 
 test('formatting helpers', () => {

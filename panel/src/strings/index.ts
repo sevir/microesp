@@ -21,7 +21,6 @@ interface Strings {
   powerOff: string;
   reboot: string;
   cancel: string;
-  waitingPc: string;
   needsAgent: string;
   performance: string;
   teleLive: string;
@@ -46,7 +45,7 @@ interface Strings {
   faultText: Record<Fault, string>;
   confirmOffTitle: string;
   confirmRebootTitle: string;
-  confirmText: (kind: 'off' | 'reboot', countdown: number) => string;
+  confirmText: (kind: 'off' | 'reboot', countdown: number, agentOnline: boolean) => string;
   sendFailed: string;
   formatUptime: (seconds: number) => string;
   decimalSep: string;
@@ -85,8 +84,7 @@ const es: Strings = {
   powerOff: 'Apagar',
   reboot: 'Reiniciar',
   cancel: 'Cancelar',
-  waitingPc: 'Esperando al PC…',
-  needsAgent: 'Apagar y reiniciar necesitan el agente del PC',
+  needsAgent: 'El agente del PC no responde: el dongle rechazará apagar y reiniciar.',
   performance: 'Rendimiento',
   teleLive: 'Se actualiza cada 30 s',
   teleIdle: 'Sin datos del agente',
@@ -131,10 +129,11 @@ const es: Strings = {
   },
   confirmOffTitle: '¿Apagar el PC?',
   confirmRebootTitle: '¿Reiniciar el PC?',
-  confirmText: (kind, c) =>
+  confirmText: (kind, c, agentOnline) =>
     (kind === 'off' ? 'Se apagará ' : 'Se reiniciará ') +
     (c > 0 ? `tras una cuenta atrás de ${c} s, que puedes cancelar. ` : 'de inmediato. ') +
-    'Guarda antes tu trabajo abierto.',
+    'Guarda antes tu trabajo abierto.' +
+    (agentOnline ? '' : ' El agente del PC parece desconectado, así que el dongle puede rechazar la orden.'),
   sendFailed: 'No se pudo enviar la orden',
   formatUptime: (s) => {
     const { d, h, m } = splitUptime(s);
@@ -179,8 +178,7 @@ const en: Strings = {
   powerOff: 'Shut down',
   reboot: 'Restart',
   cancel: 'Cancel',
-  waitingPc: 'Waiting for the PC…',
-  needsAgent: 'Shut down and restart need the PC agent',
+  needsAgent: 'The PC agent is offline: the dongle will reject shut down and restart.',
   performance: 'Performance',
   teleLive: 'Updates every 30 s',
   teleIdle: 'No agent data',
@@ -225,10 +223,11 @@ const en: Strings = {
   },
   confirmOffTitle: 'Shut down the PC?',
   confirmRebootTitle: 'Restart the PC?',
-  confirmText: (kind, c) =>
+  confirmText: (kind, c, agentOnline) =>
     (kind === 'off' ? 'It will shut down ' : 'It will restart ') +
     (c > 0 ? `after a ${c} s countdown you can cancel. ` : 'right away. ') +
-    'Save your open work first.',
+    'Save your open work first.' +
+    (agentOnline ? '' : ' The PC agent looks offline, so the dongle may reject the command.'),
   sendFailed: 'Could not send the command',
   formatUptime: (s) => {
     const { d, h, m } = splitUptime(s);

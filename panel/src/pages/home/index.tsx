@@ -9,10 +9,9 @@ import {
   WAKE_METHODS,
   WritableCode,
   MicroEspState,
-  activeFaults,
-  canCommand,
   canWake,
   clampCountdown,
+  errorFaults,
   formatTenths,
   telemetryLive,
 } from '@/device/model';
@@ -48,8 +47,6 @@ export default function Home() {
 
   const live = telemetryLive(state);
   const wake = canWake(state);
-  const actions = state.pc_state === 'on' || state.pc_state === 'on_no_agent';
-  const commandsOk = online && canCommand(state);
 
   let heroTitle = Strings.state[state.pc_state];
   let heroSub = Strings.sub[state.pc_state];
@@ -104,57 +101,46 @@ export default function Home() {
           </View>
         </View>
 
-        {!pending && wake ? (
+        {pending ? (
           <Button
-            className={`${styles.btn} ${styles.btnAccent}`}
-            disabled={!online}
-            onClick={() => send('power_on', true)}
+            className={`${styles.btn} ${styles.btnLight}`}
+            onClick={() => send(pending === 'off' ? 'power_off' : 'reboot', false)}
           >
-            <View className={styles.btnInner}>
-              <Icon name="power" color="#FFFFFF" strokeWidth={2.2} />
-              <Text>{state.pc_state === 'sleep' ? Strings.wakeUp : Strings.powerOn}</Text>
-            </View>
+            {Strings.cancel}
           </Button>
-        ) : null}
-
-        {!pending && actions ? (
+        ) : (
+          // The detected state is only a hint (the BIOS enumerates the dongle even
+          // with the PC off), so every command stays available whatever it says.
           <View className={styles.actions}>
-            <View className={styles.actionRow} style={{ opacity: commandsOk ? 1 : 0.4 }}>
-              <Button className={`${styles.btn} ${styles.btnLight}`} disabled={!commandsOk} onClick={() => setAsk('off')}>
+            <Button
+              className={`${styles.btn} ${wake ? styles.btnAccent : styles.btnGhost}`}
+              onClick={() => send('power_on', true)}
+            >
+              <View className={styles.btnInner}>
+                <Icon name="power" color={wake ? '#FFFFFF' : '#F4F4F1'} strokeWidth={2.2} />
+                <Text>{state.pc_state === 'sleep' ? Strings.wakeUp : Strings.powerOn}</Text>
+              </View>
+            </Button>
+            <View className={styles.actionRow}>
+              <Button className={`${styles.btn} ${styles.btnLight}`} onClick={() => setAsk('off')}>
                 <View className={styles.btnInner}>
                   <Icon name="power" color="#15171C" size={18} strokeWidth={2.2} />
                   <Text>{Strings.powerOff}</Text>
                 </View>
               </Button>
-              <Button className={`${styles.btn} ${styles.btnGhost}`} disabled={!commandsOk} onClick={() => setAsk('reboot')}>
+              <Button className={`${styles.btn} ${styles.btnGhost}`} onClick={() => setAsk('reboot')}>
                 <View className={styles.btnInner}>
                   <Icon name="reboot" color="#F4F4F1" size={18} strokeWidth={2.2} />
                   <Text>{Strings.reboot}</Text>
                 </View>
               </Button>
             </View>
-            {!commandsOk && online ? <Text className={styles.hint}>{Strings.needsAgent}</Text> : null}
+            {online && !state.agent_online ? <Text className={styles.hint}>{Strings.needsAgent}</Text> : null}
           </View>
-        ) : null}
-
-        {pending ? (
-          <Button
-            className={`${styles.btn} ${styles.btnLight}`}
-            disabled={!online}
-            onClick={() => send(pending === 'off' ? 'power_off' : 'reboot', false)}
-          >
-            {Strings.cancel}
-          </Button>
-        ) : null}
-
-        {!pending && state.pc_state === 'booting' ? (
-          <Button className={`${styles.btn} ${styles.btnWaiting}`} disabled>
-            {Strings.waitingPc}
-          </Button>
-        ) : null}
+        )}
       </View>
 
-      {activeFaults(state.fault).map((f) => (
+      {errorFaults(state.fault).map((f) => (
         <View key={f} className={styles.fault}>
           <Icon name="alert" color="#B54708" />
           <View className={styles.faultText}>
@@ -247,7 +233,13 @@ export default function Home() {
       </View>
 
       {ask ? (
-        <ConfirmSheet kind={ask} countdown={state.cmd_countdown} onConfirm={confirm} onClose={() => setAsk(null)} />
+        <ConfirmSheet
+          kind={ask}
+          countdown={state.cmd_countdown}
+          agentOnline={state.agent_online}
+          onConfirm={confirm}
+          onClose={() => setAsk(null)}
+        />
       ) : null}
     </View>
   );

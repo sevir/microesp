@@ -7,11 +7,12 @@ import styles from './ConfirmSheet.module.less';
 interface Props {
   kind: PendingCommand;
   countdown: number;
+  agentOnline: boolean;
   onConfirm: () => void;
   onClose: () => void;
 }
 
-export default function ConfirmSheet({ kind, countdown, onConfirm, onClose }: Props) {
+export default function ConfirmSheet({ kind, countdown, agentOnline, onConfirm, onClose }: Props) {
   const off = kind === 'off';
   return (
     <View className={styles.backdrop}>
@@ -19,7 +20,7 @@ export default function ConfirmSheet({ kind, countdown, onConfirm, onClose }: Pr
         <View className={styles.handle} />
         <View className={styles.texts}>
           <Text className={styles.title}>{off ? Strings.confirmOffTitle : Strings.confirmRebootTitle}</Text>
-          <Text className={styles.body}>{Strings.confirmText(kind, countdown)}</Text>
+          <Text className={styles.body}>{Strings.confirmText(kind, countdown, agentOnline)}</Text>
         </View>
         <Button className={`${styles.btn} ${off ? styles.danger : styles.dark}`} onClick={onConfirm}>
           {off ? Strings.powerOff : Strings.reboot}
