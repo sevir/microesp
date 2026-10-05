@@ -1,7 +1,7 @@
 {
   "projectname": "MicroESP",
   "i18n": false,
-  "description": "",
+  "description": "serverpanel",
   "miniprogramRoot": "./dist/tuya",
   "devMode": "ray",
   "dependencies": {
